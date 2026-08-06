@@ -1,0 +1,30 @@
+{
+  "name": "jsii-target-ruby",
+  "version": "0.1.0",
+  "description": "Ruby language target for jsii, as an external jsii-pacmak plugin. Generates idiomatic Ruby bindings (snake_case members, keyword-argument props, lazy autoloads, RBS signatures) from any jsii assembly.",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Omar Qureshi",
+    "email": "omar@omarqureshi.net"
+  },
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "jsii-pacmak": ">= 1.0.0 < 2.0.0 || >= 0.0.0-0 < 0.1.0"
+  },
+  "dependencies": {
+    "@jsii/spec": "*",
+    "codemaker": "*",
+    "fs-extra": "^10.0.0",
+    "jsii-reflect": "*",
+    "jsii-rosetta": ">= 5.9.0",
+    "semver": "^7.0.0"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.0"
+  },
+  "//": "SPIKE NOTE: dependency ranges are placeholders and node_modules is symlinked into the sibling jsii monorepo checkout; the real package pins the published jsii-pacmak plugin API."
+}

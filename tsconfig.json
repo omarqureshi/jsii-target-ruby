@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "node16",
+    "moduleResolution": "node16",
+    "lib": [
+      "ES2022"
+    ],
+    "declaration": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "outDir": "lib",
+    "rootDir": "src",
+    "types": [
+      "node"
+    ],
+    "experimentalDecorators": true
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}
