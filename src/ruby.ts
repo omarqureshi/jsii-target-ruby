@@ -2,7 +2,7 @@ import * as spec from '@jsii/spec';
 import { toSnakeCase, toPascalCase } from 'codemaker';
 import * as fs from 'fs-extra';
 import * as reflect from 'jsii-reflect';
-import { ApiLocation, RosettaTabletReader } from 'jsii-rosetta';
+import { ApiLocation } from 'jsii-rosetta';
 import * as path from 'path';
 
 import { Generator, Legalese } from 'jsii-pacmak/lib/generator';
@@ -236,7 +236,7 @@ export class RubyGenerator extends Generator {
     // Signature keeps the tablet reader pacmak hands every target; the
     // rosetta plugin phase (D3) will store and use it for example
     // translation.
-    _rosetta: RosettaTabletReader,
+    _rosetta: TargetOptions['rosetta'],
     options: TargetOptions,
   ) {
     super({ runtimeTypeChecking: options.runtimeTypeChecking });
