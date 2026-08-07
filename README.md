@@ -23,8 +23,16 @@ AWS repositories):
   plugin-owned version mapping.
 - `runtime/` — the `jsii-ruby-runtime` gem: the Ruby client for the jsii
   kernel that generated bindings load at runtime.
-- `test/` — TypeScript unit tests for naming and version mapping
-  (`node --test`, no test-framework dependency).
+- `test/` — TypeScript unit tests (`node --test`, no test-framework
+  dependency): naming, version mapping, rosetta visitor behavior, and the
+  rosetta **translations corpus**. The corpus snippets live upstream and ship
+  inside the jsii-rosetta package (`lib/testing/translations-corpus`); this
+  repo contributes only the `.rb` expectations (`test/translations/`,
+  mirroring the corpus layout) so there is no vendored copy to drift.
+  `test/translations-local/` holds snippet+expectation pairs not yet
+  upstream, and `KNOWN_RENDER_GAPS` in `test/rosetta-corpus.test.ts` pins
+  the snippets blocked on queued upstream renderer fixes — those tests
+  flip loudly when the fixes land.
 - `compliance/` — the jsii compliance suite plus runtime unit specs (RSpec).
   `generate.sh` regenerates the `jsii-calc` bindings through `--plugin` on
   every run, so the specs always exercise the current generator.
