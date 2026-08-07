@@ -13,10 +13,39 @@ Extracted from the [Ruby bindings fork](https://github.com/omarqureshi/jsii)
 as the reference implementation for the jsii language-plugin RFC. Validated by
 generating the `jsii-calc` fixture closure through **stock upstream
 jsii-pacmak** and running the full jsii compliance suite against the output
-with the published `@jsii/runtime`: **152 examples, 0 failures**; all
-generated files pass `ruby -c`.
+with the published `@jsii/runtime` — full pass; all generated files pass
+`ruby -c`.
 
-Consumed at runtime by the [`jsii-ruby-runtime` gem](https://github.com/omarqureshi/jsii/tree/ruby-language-bindings/packages/%40jsii/ruby-runtime).
+The repo carries everything Ruby, per the plugin model (no language content in
+AWS repositories):
+
+- `src/` — the pacmak target (code generator), the rosetta visitor, and
+  plugin-owned version mapping.
+- `runtime/` — the `jsii-ruby-runtime` gem: the Ruby client for the jsii
+  kernel that generated bindings load at runtime.
+- `test/` — TypeScript unit tests for naming and version mapping
+  (`node --test`, no test-framework dependency).
+- `compliance/` — the jsii compliance suite plus runtime unit specs (RSpec).
+  `generate.sh` regenerates the `jsii-calc` bindings through `--plugin` on
+  every run, so the specs always exercise the current generator.
+
+## Testing
+
+```sh
+# TypeScript unit tests (naming, version mapping)
+npm run test:unit
+
+# Full compliance + runtime specs: regenerates jsii-calc via --plugin,
+# then runs RSpec against the generated bindings (requires Ruby >= 3.3)
+npm run test:compliance
+```
+
+The compliance fixtures upstream carry no `jsii.targets.ruby` configuration
+(external-language config never lands in an AWS repo), so `generate.sh` passes
+`--force-target` and relies on the generator's default gem/module name
+derivation — which produces exactly the names the specs expect. The pacmak
+`--target-config` overlay proposed in the RFC is the general mechanism for
+names the defaults cannot derive.
 
 ## Status: spike
 

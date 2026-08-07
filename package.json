@@ -10,7 +10,10 @@
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "node node_modules/typescript/bin/tsc -p tsconfig.json",
+    "test": "npm run test:unit && npm run test:compliance",
+    "test:unit": "node node_modules/typescript/bin/tsc -p tsconfig.test.json && node --test build/test/*.test.js",
+    "test:compliance": "bash compliance/generate.sh && cd compliance && bundle install --quiet && bundle exec rspec --require ./spec/compliance_formatter.rb --format ComplianceFormatter --format progress"
   },
   "peerDependencies": {
     "jsii-pacmak": ">= 1.0.0 < 2.0.0 || >= 0.0.0-0 < 0.1.0"
