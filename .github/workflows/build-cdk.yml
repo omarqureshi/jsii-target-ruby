@@ -78,9 +78,13 @@ jobs:
           # ignores devDependencies; the published @aws-cdk/asset-* packages
           # devDepend on aws-cdk-lib, which used to deadlock the sort here),
           # so a regression fails this step before anything generates.
+          # --no-parallel: full builds of the closure's leaf packages copy
+          # into the shared dist/ruby tree concurrently and race on mkdir
+          # (nondeterministic EEXIST on e.g. dist/ruby/sig). Sequential is
+          # barely slower — aws-cdk-lib dominates the wall clock anyway.
           node --max-old-space-size=8192 toolchain/jsii/packages/jsii-pacmak/bin/jsii-pacmak \
             --plugin "$(pwd)" \
-            -t ruby --force-target --recurse \
+            -t ruby --force-target --recurse --no-parallel \
             -o "${workdir}/dist" "${workdir}/node_modules/aws-cdk-lib"
           (cd runtime && gem build jsii-ruby-runtime.gemspec && mv jsii-ruby-runtime-*.gem "${workdir}/dist/ruby/")
           ls -la "${workdir}/dist/ruby/"*.gem
