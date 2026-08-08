@@ -74,9 +74,16 @@ jobs:
             --plugin "${GITHUB_WORKSPACE}" \
             -t ruby --code-only --force-target \
             -o dist node_modules/aws-cdk-lib
-          mkdir -p asm && tar xzf dist/ruby/lib/aws-cdk-lib@*.jsii.tgz -C asm
+          # The docs index/landing generators read Ruby naming from the
+          # assembly, and the published assembly carries none (that's what
+          # the overlay is for) — hand them the overlay-merged form. The
+          # script refuses to write an assembly with zero submodule names,
+          # so a broken overlay fails here instead of publishing an empty
+          # module list.
+          node "${GITHUB_WORKSPACE}/scripts/effective-assembly.js" \
+            node_modules/aws-cdk-lib "$workdir/effective.jsii.gz"
           echo "GEM_LIB=$workdir/dist/ruby/lib/aws-cdk-lib" >> "$GITHUB_ENV"
-          echo "ASSEMBLY=$workdir/asm/package/.jsii.gz" >> "$GITHUB_ENV"
+          echo "ASSEMBLY=$workdir/effective.jsii.gz" >> "$GITHUB_ENV"
 
       - name: Build docs site
         run: |
