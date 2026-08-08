@@ -22,6 +22,13 @@ export class RubyTarget extends Target {
     this.generator = new RubyGenerator(options.rosetta, options);
   }
 
+  // pacmak builds each toposort batch of modules concurrently, and every
+  // Ruby package copies into the SAME shared output tree (dist/ruby's lib/
+  // and sig/), so the copy phase must be serialized: concurrent fs copies
+  // race on subdirectory creation (nondeterministic EEXIST). The gem build
+  // itself stays parallel — it writes only into the per-package source dir.
+  private static copyChain: Promise<unknown> = Promise.resolve();
+
   public async build(sourceDir: string, outDir: string): Promise<void> {
     const gemName = rubyGemName(this.assembly);
 
@@ -31,7 +38,9 @@ export class RubyTarget extends Target {
     });
 
     // Copy compiled artifacts safely to the distribution directory
-    await this.copyFiles(sourceDir, outDir);
+    const copied = RubyTarget.copyChain.then(() => this.copyFiles(sourceDir, outDir));
+    RubyTarget.copyChain = copied.catch(() => undefined);
+    await copied;
   }
 }
 
