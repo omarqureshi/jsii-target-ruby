@@ -30,6 +30,7 @@ link fs-extra      "${jsii_repo}/node_modules/fs-extra"
 link semver        "${jsii_repo}/node_modules/semver"
 link @types/node   "${jsii_repo}/node_modules/@types/node"
 link @types/semver "${jsii_repo}/node_modules/@types/semver"
+link @types/fs-extra "${jsii_repo}/node_modules/@types/fs-extra"
 link typescript    "${jsii_repo}/node_modules/typescript"
 
 # The compliance harness generates from the monorepo's jsii-calc fixture
