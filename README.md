@@ -34,6 +34,9 @@ AWS repositories):
   the snippets blocked on queued upstream renderer fixes — those tests
   flip loudly when the fixes land.
 - `compliance/` — the jsii compliance suite plus runtime unit specs (RSpec).
+- `docs/decisions.md` — every design decision (naming, structs, versions,
+  callbacks, packaging) with its rationale and the test that enforces it;
+  the completed form of the checklist `create-jsii-language` scaffolds.
   `generate.sh` regenerates the `jsii-calc` bindings through `--plugin` on
   every run, so the specs always exercise the current generator.
 
