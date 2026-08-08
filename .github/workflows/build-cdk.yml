@@ -42,7 +42,7 @@ jobs:
       - name: Naming-sync check (new submodules need a deliberate decision)
         run: node scripts/check-cdk-naming.js "${{ runner.temp }}/cdk-build/node_modules/aws-cdk-lib"
 
-      - name: Generate and build gems (whole closure, dependency order)
+      - name: Generate and build gems (single --recurse over the installed closure)
         env:
           JSII_RUBY_TARGET_CONFIG: ${{ github.workspace }}/config/cdk-targets.json
           # The feed publishes the closure atomically: every inter-gem
@@ -50,14 +50,15 @@ jobs:
           JSII_RUBY_PIN_DEPENDENCIES: exact
         run: |
           workdir="${{ runner.temp }}/cdk-build"
-          node scripts/cdk-closure.js "${workdir}/node_modules/aws-cdk-lib" "${workdir}/node_modules" | while read -r pkg; do
-            echo "::group::pacmak ${pkg}"
-            node toolchain/jsii/packages/jsii-pacmak/bin/jsii-pacmak \
-              --plugin "$(pwd)" \
-              -t ruby --force-target \
-              -o "${workdir}/dist" "${workdir}/node_modules/${pkg}"
-            echo "::endgroup::"
-          done
+          # One --recurse run deliberately exercises the D1 branch's pacmak
+          # fix: build order must ignore devDependencies (the published
+          # @aws-cdk/asset-* packages devDepend on aws-cdk-lib, which used to
+          # deadlock the topological sort here). A regression fails this step
+          # before anything generates.
+          node --max-old-space-size=8192 toolchain/jsii/packages/jsii-pacmak/bin/jsii-pacmak \
+            --plugin "$(pwd)" \
+            -t ruby --force-target --recurse \
+            -o "${workdir}/dist" "${workdir}/node_modules/aws-cdk-lib"
           (cd runtime && gem build jsii-ruby-runtime.gemspec && mv jsii-ruby-runtime-*.gem "${workdir}/dist/ruby/")
           ls -la "${workdir}/dist/ruby/"*.gem
 
