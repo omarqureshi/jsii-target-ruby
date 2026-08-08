@@ -107,8 +107,10 @@ jobs:
         if: github.event_name == 'schedule' || inputs.publish
         run: |
           aws s3 sync "$DOCS_OUT" s3://aws-cdk-ruby-gems/docs/ --delete --no-progress
+          # `Aliases.Items || []`: contains() errors on null, and distributions
+          # without aliases have no Items at all.
           DIST_ID=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?contains(Aliases.Items, 'rubygems.omarqureshi.net')].Id | [0]" \
+            --query "DistributionList.Items[?contains(Aliases.Items || \`[]\`, 'rubygems.omarqureshi.net')].Id | [0]" \
             --output text)
           if [ "$DIST_ID" != "None" ] && [ -n "$DIST_ID" ]; then
             aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/docs/*' >/dev/null
