@@ -9,7 +9,10 @@ Gem::Specification.new do |s|
   s.authors     = ['Omar Qureshi']
   s.homepage    = 'https://github.com/omarqureshi/jsii-target-ruby'
   s.license     = 'Apache-2.0'
-  s.files       = Dir['lib/**/*.rb'] + Dir['sig/**/*.rbs']
+  # Anchored to this file's directory: `gem build` from anywhere else (e.g. a
+  # pipeline running at the repo root, where lib/ is compiled TypeScript)
+  # must not silently produce an empty gem.
+  s.files       = Dir.chdir(__dir__) { Dir['lib/**/*.rb'] + Dir['sig/**/*.rbs'] }
   s.required_ruby_version = '>= 3.3.0'
   s.add_dependency 'base64', '~> 0.2'
 

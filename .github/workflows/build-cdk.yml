@@ -55,7 +55,7 @@ jobs:
               -o "${workdir}/dist" "${workdir}/node_modules/${pkg}"
             echo "::endgroup::"
           done
-          gem build runtime/jsii-ruby-runtime.gemspec -o "${workdir}/dist/ruby/jsii-ruby-runtime.gem"
+          (cd runtime && gem build jsii-ruby-runtime.gemspec -o "${workdir}/dist/ruby/jsii-ruby-runtime.gem")
           ls -la "${workdir}/dist/ruby/"*.gem
 
       - name: Syntax-check every generated file
