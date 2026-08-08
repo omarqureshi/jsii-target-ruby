@@ -71,7 +71,7 @@ jobs:
           export GEM_HOME="${workdir}/gemhome"
           (cd "${workdir}/dist/ruby" && gem install --local --no-document ./*.gem)
           JSII_RUNTIME="${workdir}/node_modules/@jsii/runtime/bin/jsii-runtime" \
-            ruby -e "Gem.paths = ENV; require '${{ github.workspace }}/scripts/synth-smoke'"
+            ruby scripts/synth-smoke.rb
 
       - name: Upload gems
         uses: actions/upload-artifact@v4

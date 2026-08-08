@@ -3,9 +3,11 @@
 # Synth smoke test for freshly generated CDK gems: builds a small app and
 # verifies the synthesized CloudFormation template. Run with GEM_HOME pointing
 # at an install of the generated gems + jsii-ruby-runtime, and JSII_RUNTIME at
-# an @jsii/runtime entry point.
+# an @jsii/runtime entry point (RubyGems honors the exported GEM_HOME on its
+# own — no Gem.paths gymnastics, which behave differently across RubyGems
+# versions).
 #
-#   GEM_HOME=... JSII_RUNTIME=... ruby -e "Gem.paths = ENV; require './scripts/synth-smoke'"
+#   GEM_HOME=... JSII_RUNTIME=... ruby scripts/synth-smoke.rb
 require 'aws-cdk-lib'
 require 'json'
 require 'tmpdir'
