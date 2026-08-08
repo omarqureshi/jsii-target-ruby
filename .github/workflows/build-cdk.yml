@@ -50,11 +50,12 @@ jobs:
           JSII_RUBY_PIN_DEPENDENCIES: exact
         run: |
           workdir="${{ runner.temp }}/cdk-build"
-          # One --recurse run deliberately exercises the D1 branch's pacmak
-          # fix: build order must ignore devDependencies (the published
-          # @aws-cdk/asset-* packages devDepend on aws-cdk-lib, which used to
-          # deadlock the topological sort here). A regression fails this step
-          # before anything generates.
+          # One --recurse run: this is the invocation every scaffolded plugin
+          # pipeline should be able to use — no closure-ordering machinery of
+          # its own. It exercises the D1 branch's pacmak fix (build order
+          # ignores devDependencies; the published @aws-cdk/asset-* packages
+          # devDepend on aws-cdk-lib, which used to deadlock the sort here),
+          # so a regression fails this step before anything generates.
           node --max-old-space-size=8192 toolchain/jsii/packages/jsii-pacmak/bin/jsii-pacmak \
             --plugin "$(pwd)" \
             -t ruby --force-target --recurse \
