@@ -4,7 +4,14 @@ name: build-cdk
 # stock jsii-pacmak with this plugin: naming arrives via the target-config
 # overlay (config/cdk-targets.json), no aws-cdk fork or assembly rebuild
 # involved. Produces the gems as workflow artifacts, gated by a naming-sync
-# check and a synth smoke test.
+# check and a synth smoke test; with publish=true, pushes them to the public
+# gem feed (rubygems.omarqureshi.net) and re-verifies by installing from it.
+#
+# NO immutability yet, deliberately: same-version gems overwrite in the feed
+# while the pipeline is being iterated on ("mess-around mode"). Consumers
+# with exact-pinned Gemfile.locks will see checksum mismatches on overwrite;
+# a publish-once guard (with a force escape hatch) comes once the output is
+# trusted.
 
 on:
   workflow_dispatch:
@@ -12,10 +19,25 @@ on:
       aws-cdk-lib-version:
         description: aws-cdk-lib version to build (an npm dist-tag or exact version)
         default: latest
+      publish:
+        description: publish the built gems to the public feed
+        type: boolean
+        default: false
+
+# Publishing runs must not overlap the docs workflow (shared bucket + index);
+# non-publishing runs get a unique group so they don't serialize.
+concurrency:
+  group: ${{ inputs.publish && 'gem-publish' || format('build-cdk-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.publish && 'production' || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -84,6 +106,103 @@ jobs:
           name: cdk-ruby-gems-${{ inputs.aws-cdk-lib-version }}
           path: ${{ runner.temp }}/cdk-build/dist/ruby/*.gem
           if-no-files-found: error
+
+      - name: Configure AWS Credentials
+        if: inputs.publish
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsCDKRole
+          aws-region: us-east-1
+
+      - name: Publish gems to the public feed
+        if: inputs.publish
+        run: |
+          workdir="${{ runner.temp }}/cdk-build"
+          BUCKET=aws-cdk-ruby-gems
+          REPO_DIR="${{ runner.temp }}/gem-repo"
+          mkdir -p "$REPO_DIR/gems"
+
+          # Pull the existing gems down so the regenerated index retains
+          # prior versions. Same-name gems from this run OVERWRITE (see the
+          # header note on mess-around mode).
+          aws s3 sync "s3://$BUCKET/gems/" "$REPO_DIR/gems/" --no-progress
+          cp -f "${workdir}/dist/ruby/"*.gem "$REPO_DIR/gems/"
+          echo "Total gems in repository: $(ls "$REPO_DIR/gems" | wc -l)"
+
+          # generate_index (legacy static index) is a plugin in modern RubyGems.
+          gem install rubygems-generate_index --no-document
+          gem generate_index --directory "$REPO_DIR"
+
+          # Reconciliation guard: every gem built this run must appear in the
+          # regenerated index — fail before uploading anything.
+          ruby -rzlib -rstringio -e '
+            specs = %w[specs.4.8.gz prerelease_specs.4.8.gz].flat_map { |f|
+              path = File.join("'"$REPO_DIR"'", f)
+              File.exist?(path) ? Marshal.load(Zlib::GzipReader.new(StringIO.new(File.binread(path))).read) : []
+            }
+            indexed = specs.map { |name, version, _| "#{name}-#{version}" }
+            built = Dir.glob("'"$workdir"'/dist/ruby/*.gem").map { |f| File.basename(f, ".gem") }
+            missing = built.reject { |g| indexed.include?(g) }
+            abort("::error::gems built this run but absent from the regenerated index: #{missing.join(", ")}") unless missing.empty?
+            puts "index OK: all #{built.size} freshly built gems present"
+          '
+
+          # Provenance manifest beside the index: what was built, from what.
+          mkdir -p "$REPO_DIR/manifests"
+          cdk_version=$(basename "${workdir}"/dist/ruby/aws-cdk-lib-*.gem .gem | sed 's/^aws-cdk-lib-//')
+          cat > "$REPO_DIR/manifests/aws-cdk-lib-${cdk_version}.json" << MANIFEST
+          {
+            "aws_cdk_lib": "${cdk_version}",
+            "plugin": "${{ github.sha }}",
+            "jsii": "$(git -C toolchain/jsii rev-parse HEAD)",
+            "jsii_rosetta": "$(git -C toolchain/jsii-rosetta rev-parse HEAD)",
+            "workflow_run": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "built_at": "$(date -u +%FT%TZ)"
+          }
+          MANIFEST
+
+          # Human-facing landing for the feed root, from the fresh index.
+          ruby docs-gen/gen-feed-index.rb "$REPO_DIR"
+
+          aws s3 sync "$REPO_DIR/" "s3://$BUCKET/" --no-progress
+
+          # Shared site stylesheets at the canonical /styles/ path.
+          aws s3 sync docs-gen "s3://$BUCKET/styles/" \
+            --exclude "*" --include "*.css" --content-type "text/css" --no-progress
+
+          # Spot-check: the freshly built gems must actually be in the bucket.
+          for gem_file in "${workdir}/dist/ruby/"*.gem; do
+            key="gems/$(basename "$gem_file")"
+            aws s3api head-object --bucket "$BUCKET" --key "$key" >/dev/null \
+              || { echo "::error::$key missing from s3://$BUCKET after sync"; exit 1; }
+          done
+
+          # Consumers must see the fresh index immediately; a missing
+          # distribution means silent staleness, so fail loudly.
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(Aliases.Items || \`[]\`, 'rubygems.omarqureshi.net')].Id | [0]" \
+            --output text)
+          if [ -z "$DIST_ID" ] || [ "$DIST_ID" = "None" ]; then
+            echo "::error::no CloudFront distribution found for rubygems.omarqureshi.net"
+            exit 1
+          fi
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*' >/dev/null
+          echo "published + invalidated on $DIST_ID"
+
+      - name: Verify by installing from the public feed
+        if: inputs.publish
+        run: |
+          workdir="${{ runner.temp }}/cdk-build"
+          verify="${{ runner.temp }}/feed-verify"
+          mkdir -p "$verify" && cd "$verify"
+          cdk_version=$(basename "${workdir}"/dist/ruby/aws-cdk-lib-*.gem .gem | sed 's/^aws-cdk-lib-//')
+          cat > Gemfile << GEMFILE
+          source 'https://rubygems.omarqureshi.net'
+          gem 'aws-cdk-lib', '= ${cdk_version}'
+          GEMFILE
+          bundle install
+          JSII_RUNTIME="${workdir}/node_modules/@jsii/runtime/bin/jsii-runtime" \
+            bundle exec ruby "${GITHUB_WORKSPACE}/scripts/synth-smoke.rb"
 
       - name: Summary
         run: |
