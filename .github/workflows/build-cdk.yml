@@ -45,6 +45,9 @@ jobs:
       - name: Generate and build gems (whole closure, dependency order)
         env:
           JSII_RUBY_TARGET_CONFIG: ${{ github.workspace }}/config/cdk-targets.json
+          # The feed publishes the closure atomically: every inter-gem
+          # dependency is pinned to the exact version generated together.
+          JSII_RUBY_PIN_DEPENDENCIES: exact
         run: |
           workdir="${{ runner.temp }}/cdk-build"
           node scripts/cdk-closure.js "${workdir}/node_modules/aws-cdk-lib" "${workdir}/node_modules" | while read -r pkg; do
@@ -55,7 +58,7 @@ jobs:
               -o "${workdir}/dist" "${workdir}/node_modules/${pkg}"
             echo "::endgroup::"
           done
-          (cd runtime && gem build jsii-ruby-runtime.gemspec -o "${workdir}/dist/ruby/jsii-ruby-runtime.gem")
+          (cd runtime && gem build jsii-ruby-runtime.gemspec && mv jsii-ruby-runtime-*.gem "${workdir}/dist/ruby/")
           ls -la "${workdir}/dist/ruby/"*.gem
 
       - name: Syntax-check every generated file

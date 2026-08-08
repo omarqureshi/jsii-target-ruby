@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWS CDK for Ruby — API Reference</title>
+<link rel="stylesheet" href="//rubygems.omarqureshi.net/styles/theme.css">
+<link rel="stylesheet" href="//rubygems.omarqureshi.net/styles/docs-index.css">
+</head><body><div class="wrap">
+  <nav class="cdk-crumb"><span class="cur">AWSCDK</span></nav>
+  <h1>AWS CDK for <span class="r">Ruby</span></h1>
+  <p class="sub">API reference for the native Ruby bindings of the AWS CDK.</p>
+  <nav class="links"><a href="#getting-started">Getting started</a><% unless core_groups.empty? %><a href="#core">Core types</a><% end %><a href="#modules">Modules ↓</a></nav>
+  <section class="gs" id="getting-started">
+    <h2>Getting started</h2>
+    <p>Native Ruby bindings for the AWS CDK — the same construct library every other CDK
+    language uses, generated from jsii. You write idiomatic Ruby and <code>cdk deploy</code>
+    synthesises and deploys it exactly as it would from TypeScript.</p>
+
+    <h3>Prerequisites</h3>
+    <ul>
+      <li><strong>Ruby ≥ 3.3</strong> (MRI / CRuby).</li>
+      <li><strong>Node.js</strong> — the bindings talk to the jsii kernel (a small Node sidecar). You never write Node, but it must be installed.</li>
+      <li><strong>The CDK CLI</strong>: <code>npm install -g aws-cdk</code>.</li>
+    </ul>
+
+    <h3>Gemfile</h3>
+    <p>The gems are published to <code>https://rubygems.omarqureshi.net</code>. One line is the
+    whole story — everything the CDK needs arrives as pinned transitive dependencies, and
+    <code>bundle update aws-cdk-lib</code> adopts a newer preview build. Then
+    <code>bundle install</code>.</p>
+    <%= gemfile_html %>
+
+    <h3>cdk.json</h3>
+    <p>Tells the CDK CLI how to run your app:</p>
+    <%= cdkjson_html %>
+
+    <h3>A first stack</h3>
+    <p>Subclass <code>AWSCDK::Stack</code>, call <code>super</code>, and instantiate
+    constructs with <code>(self, 'LogicalId', props)</code> — the same shape as every
+    other CDK language.</p>
+    <%= stack_html %>
+    <%= app_html %>
+
+    <h3>Deploy</h3>
+    <%= deploy_html %>
+
+    <h3>Naming rules</h3>
+    <p>The conventions you'll rely on reading these docs:</p>
+    <ul>
+      <li><strong>Modules</strong> are PascalCase under <code>AWSCDK</code>: <code>AWSCDK::S3</code>, <code>AWSCDK::DynamoDB</code>, <code>AWSCDK::APIGatewayv2</code>.</li>
+      <li><strong>AWS acronyms are uppercased — in class names too.</strong> <code>RestApi</code> → <code>AWSCDK::APIGateway::RestAPI</code>; <code>FunctionUrl</code> → <code>AWSCDK::Lambda::FunctionURL</code>; <code>…Arn</code> → <code>…ARN</code>.</li>
+      <li><strong>Props</strong> are a Ruby <code>Hash</code> with <strong>snake_case</strong> keys — <code>removal_policy:</code>, not <code>removalPolicy:</code>.</li>
+      <li><strong>Enums</strong> are constants under <code>::</code>: <code>AWSCDK::RemovalPolicy::DESTROY</code>.</li>
+      <li><strong>Static properties</strong> are method calls with a <code>.</code>: <code>AWSCDK::Lambda::Runtime.RUBY_4_0</code>.</li>
+    </ul>
+  </section>
+<% unless core_groups.empty? -%>
+  <h2 class="m-title" id="core">Core types <span class="ct"><%= core_count %></span></h2>
+<% core_groups.each do |grp| -%>
+  <h3 class="core-sub"><%= grp[:label] %> <span class="ct"><%= grp[:count] %></span></h3>
+  <div class="cols">
+<% grp[:items].each do |c| -%>
+    <a class="m live" href="<%= c[:href] %>">AWSCDK::<%= h.(c[:name]) %></a>
+<% end -%>
+  </div>
+<% end -%>
+<% end -%>
+  <h2 class="m-title" id="modules">Modules</h2>
+  <div class="cols">
+<% modules.each do |m| -%>
+<% if m[:live] -%>
+    <a class="m live" href="<%= m[:leaf] %>/index.html"><%= h.(m[:name]) %></a>
+<% else -%>
+    <span class="m"><%= h.(m[:name]) %></span>
+<% end -%>
+<% end -%>
+  </div>
+  <footer>Generated on <%= generated_on %>.</footer>
+</div></body></html>

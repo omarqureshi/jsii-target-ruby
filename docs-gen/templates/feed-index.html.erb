@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWS CDK for Ruby — Gem Feed</title>
+<link rel="stylesheet" href="//rubygems.omarqureshi.net/styles/theme.css">
+<link rel="stylesheet" href="//rubygems.omarqureshi.net/styles/feed-index.css">
+</head><body><div class="wrap">
+  <h1>AWS CDK for <span class="r">Ruby</span> — gem feed</h1>
+  <p class="sub">A credential-free preview gem feed for the native Ruby bindings of the AWS CDK.</p>
+  <nav class="links">
+    <a href="/docs/">API documentation ↗</a>
+    <a href="https://github.com/aws/aws-cdk-rfcs/pull/939">RFC ↗</a>
+    <a href="#gems">Published gems ↓</a>
+  </nav>
+
+  <h2 id="install">Getting started</h2>
+  <p>Add one line to your <code>Gemfile</code> and run <code>bundle install</code> — the rest of the closure
+     (constructs, the asset packages, the jsii runtime) arrives as pinned transitive dependencies:</p>
+  <pre class="cb"><code><span class="k">source</span> <span class="s">"https://rubygems.org"</span>
+
+<span class="c"># Everything the CDK needs rides in as pinned transitive dependencies.</span>
+<span class="k">gem</span> <span class="s">"aws-cdk-lib"</span>, <span class="k">source:</span> <span class="s">"https://rubygems.omarqureshi.net"</span></code></pre>
+  <p class="meta">Preview builds carry release-style versions (<code>0.0.0.&lt;timestamp&gt;</code>); a bare requirement
+     resolves the newest, and <code>bundle update aws-cdk-lib</code> adopts a later one.</p>
+
+  <h2 id="gems">Published gems</h2>
+  <p class="meta"><%= total_gems %> gems, <%= total_versions %> versions total.</p>
+<% gems.each do |g| -%>
+  <section class="gem" id="<%= h.(g[:name]) %>">
+    <h3><code><%= h.(g[:name]) %></code><span class="count"><%= g[:count] %> version<%= g[:count] == 1 ? '' : 's' %></span></h3>
+    <p class="latest">latest <a href="gems/<%= h.(g[:name]) %>-<%= h.(g[:latest]) %>.gem"><code><%= h.(g[:latest]) %></code></a><%= g[:latest_date] ? %( <span class="d">#{g[:latest_date]}</span>) : '' %></p>
+    <details>
+      <summary>all versions</summary>
+      <ul class="vers">
+<% g[:versions].each do |v| -%>
+        <li><a href="gems/<%= h.(g[:name]) %>-<%= h.(v[:ver]) %>.gem"><code><%= h.(v[:ver]) %></code></a><%= v[:date] ? %(<span class="d">#{v[:date]}</span>) : '' %></li>
+<% end -%>
+      </ul>
+    </details>
+  </section>
+<% end -%>
+
+  <footer>Regenerated on every publish. Machine endpoints: <code>/versions</code>, <code>/info/&lt;gem&gt;</code>, <code>/specs.4.8.gz</code>.</footer>
+</div></body></html>

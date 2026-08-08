@@ -1,0 +1,34 @@
+/* Page-specific styles for the gem-feed landing (index.html). Loaded after
+   theme.css, which provides the palette + base element styles. */
+
+.wrap { max-width: 960px; }
+
+nav.links { margin: .2rem 0 1.4rem; font-size: .92rem; }
+nav.links a { color: var(--accent); font-weight: 600; text-decoration: none; margin-right: 1.2rem; }
+nav.links a:hover { text-decoration: underline; }
+
+h2 {
+  font-size: 1.35rem; margin: 2rem 0 .5rem; letter-spacing: -.01em;
+  border-top: 1px solid var(--line); padding-top: 1.4rem;
+}
+
+p code, li code, h3 code { background: var(--panel); padding: .1em .35em; border-radius: 4px; }
+pre.cb .c { font-style: italic; } /* inline install snippet comment */
+
+.meta { color: var(--muted); font-size: .9rem; margin: .3rem 0 0; }
+
+section.gem { margin: .2rem 0; }
+section.gem h3 { font-size: 1.02rem; margin: 1.3rem 0 .2rem; display: flex; align-items: baseline; gap: .6rem; }
+section.gem h3 code { background: var(--panel); padding: .12em .4em; border-radius: 5px; }
+.count { color: var(--muted); font-size: .8rem; font-weight: 400; }
+
+p.latest { margin: .15rem 0 .2rem; color: var(--muted); }
+p.latest code { background: var(--panel); padding: .1em .35em; border-radius: 4px; color: var(--ink); }
+.d { color: var(--muted); font-size: .82rem; margin-left: .5rem; font-variant-numeric: tabular-nums; }
+
+details summary { cursor: pointer; color: var(--accent); font-size: .85rem; font-weight: 600; margin: .2rem 0; }
+ul.vers { list-style: none; margin: .4rem 0 .6rem; padding: 0; columns: 2 280px; column-gap: 2rem; }
+ul.vers li { margin: .2rem 0; break-inside: avoid; }
+ul.vers a { text-decoration: none; color: var(--accent); }
+ul.vers a code { background: var(--panel); padding: .08em .3em; border-radius: 4px; color: var(--ink); }
+ul.vers a:hover code { color: var(--accent); }

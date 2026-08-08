@@ -1,0 +1,30 @@
+/* Page-specific styles for the docs landing (AWSCDK/index.html). Loaded after
+   theme.css, which provides the palette + base element styles (incl. pre.cb
+   code blocks and the Rouge token colors). */
+
+.wrap { max-width: 1120px; }
+p.sub { margin: .1rem 0 .8rem; }
+
+.links { margin: .2rem 0 .4rem; font-size: .9rem; }
+.links a { color: var(--accent); font-weight: 600; text-decoration: none; margin-right: 1.1rem; }
+.links a:hover { text-decoration: underline; }
+
+.gs { border-top: 1px solid var(--line); padding-top: .5rem; }
+.gs h2 { font-size: 1.35rem; margin: 1.4rem 0 .5rem; letter-spacing: -.01em; }
+.gs h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; margin: 1.6rem 0 .4rem; }
+.gs p { margin: .4rem 0; }
+.gs ul { margin: .4rem 0; padding-left: 1.2rem; }
+.gs li { margin: .35rem 0; }
+.gs code, .m-title code { background: var(--panel); padding: .1em .35em; border-radius: 4px; font-size: .88em; white-space: nowrap; }
+
+.m-title { font-size: 1.35rem; margin: 2rem 0 .3rem; letter-spacing: -.01em; border-top: 1px solid var(--line); padding-top: 1.5rem; }
+.m-title .ct, .core-sub .ct { opacity: .55; font-weight: 400; font-size: .85rem; margin-left: .3rem; }
+.core-sub { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; margin: 1.4rem 0 .2rem; }
+
+.cols { columns: 3 300px; column-gap: 1.5rem; margin-top: 1rem; }
+.m { display: block; padding: .35rem .1rem; color: var(--muted); break-inside: avoid; text-decoration: none; font-family: ui-monospace, monospace; font-size: 13px; }
+a.m.live { color: var(--ink); font-weight: 600; }
+a.m.live:hover { color: var(--accent); }
+
+.cdk-crumb { margin: 0 0 1rem; font: 600 .85rem system-ui, -apple-system, sans-serif; }
+.cdk-crumb .cur { color: var(--muted); font-weight: 400; font-family: ui-monospace, monospace; }

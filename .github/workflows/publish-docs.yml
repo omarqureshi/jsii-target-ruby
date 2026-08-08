@@ -1,0 +1,118 @@
+name: publish-docs
+
+# Builds the aws-cdk-lib Ruby API reference (single-registry YARD build +
+# assembly-driven index, see docs-gen/README.md) and optionally publishes it
+# to the public gem bucket under /docs.
+#
+# Supersedes the blog repo's publish-docs workflow: instead of downloading
+# the published gem from the feed, this generates the bindings fresh through
+# stock jsii-pacmak + this plugin, so the docs always match the current
+# generator and naming config.
+#
+# The publish job needs AWS OIDC: the GitHubActionsCDKRole trust policy must
+# include THIS repository's subject (note GitHub's immutable subject format
+# for newer repos: repo:owner@id/repo@id) and the AWS_ACCOUNT_ID secret must
+# be set in the production environment. Until then, run with publish=false
+# and grab the site from the workflow artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws-cdk-lib-version:
+        description: aws-cdk-lib version to document (npm dist-tag or exact version)
+        default: latest
+      publish:
+        description: sync the built site to the docs bucket (needs AWS OIDC wired for this repo)
+        type: boolean
+        default: false
+  schedule:
+    # Weekly rebuild (Mondays 05:00 UTC): a full build re-uploads the whole
+    # ~20k-file tree (fresh runner mtimes make `aws s3 sync` re-PUT all of
+    # it), so chaining to every gem publish makes S3 Tier-1 requests the
+    # dominant cost. The API surface changes rarely; dispatch manually after
+    # a notable change.
+    - cron: "0 5 * * 1"
+
+concurrency:
+  group: gem-publish
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    environment: ${{ (github.event_name == 'schedule' || inputs.publish) && 'production' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Bootstrap toolchain
+        uses: ./.github/actions/bootstrap-toolchain
+
+      - name: Install YARD + redcarpet + rouge
+        run: gem install yard redcarpet rouge --no-document
+
+      - name: Generate aws-cdk-lib Ruby sources
+        env:
+          JSII_RUBY_TARGET_CONFIG: ${{ github.workspace }}/config/cdk-targets.json
+        run: |
+          workdir="${{ runner.temp }}/docs-build"
+          mkdir -p "$workdir" && cd "$workdir"
+          npm init -y > /dev/null
+          npm install --save "aws-cdk-lib@${{ inputs.aws-cdk-lib-version || 'latest' }}"
+          node "${GITHUB_WORKSPACE}/toolchain/jsii/packages/jsii-pacmak/bin/jsii-pacmak" \
+            --plugin "${GITHUB_WORKSPACE}" \
+            -t ruby --code-only --force-target \
+            -o dist node_modules/aws-cdk-lib
+          mkdir -p asm && tar xzf dist/ruby/lib/aws-cdk-lib@*.jsii.tgz -C asm
+          echo "GEM_LIB=$workdir/dist/ruby/lib/aws-cdk-lib" >> "$GITHUB_ENV"
+          echo "ASSEMBLY=$workdir/asm/package/.jsii.gz" >> "$GITHUB_ENV"
+
+      - name: Build docs site
+        run: |
+          OUT="${{ runner.temp }}/docs-site"
+          rm -rf "$OUT" && mkdir -p "$OUT"
+          bash docs-gen/build-module-docs.sh "$GEM_LIB" "$OUT"
+          ruby docs-gen/gen-module-landing.rb "$ASSEMBLY" "$OUT"
+          ruby docs-gen/inject-crumb.rb "$OUT"
+          ruby docs-gen/gen-index.rb "$ASSEMBLY" "$OUT"
+          echo "DOCS_OUT=$OUT" >> "$GITHUB_ENV"
+          echo "built $(find "$OUT/AWSCDK" -maxdepth 1 -type d | wc -l) module dirs"
+
+      - name: Upload site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdk-ruby-docs
+          path: ${{ runner.temp }}/docs-site
+          if-no-files-found: error
+
+      - name: Configure AWS Credentials
+        if: github.event_name == 'schedule' || inputs.publish
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsCDKRole
+          aws-region: us-east-1
+
+      - name: Sync to S3 + invalidate CloudFront
+        if: github.event_name == 'schedule' || inputs.publish
+        run: |
+          aws s3 sync "$DOCS_OUT" s3://aws-cdk-ruby-gems/docs/ --delete --no-progress
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(Aliases.Items, 'rubygems.omarqureshi.net')].Id | [0]" \
+            --output text)
+          if [ "$DIST_ID" != "None" ] && [ -n "$DIST_ID" ]; then
+            aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/docs/*' >/dev/null
+            echo "invalidated /docs/* on $DIST_ID"
+          else
+            echo "no CloudFront distribution for rubygems.omarqureshi.net; skipping invalidation"
+          fi

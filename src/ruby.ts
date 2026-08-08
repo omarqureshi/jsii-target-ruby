@@ -46,6 +46,24 @@ function rubyGemName(assembly: {
 }
 
 /**
+ * Version of a dependency as installed relative to a package root, or
+ * `undefined` when unresolvable (dependency absent, or its exports map does
+ * not expose package.json). Used for exact dependency pinning
+ * (JSII_RUBY_PIN_DEPENDENCIES=exact).
+ */
+export function resolveInstalledVersion(depName: string, packageRoot: string | undefined): string | undefined {
+  if (packageRoot === undefined) {
+    return undefined;
+  }
+  try {
+    const pkgJson = require.resolve(`${depName}/package.json`, { paths: [packageRoot] });
+    return JSON.parse(fs.readFileSync(pkgJson, 'utf-8')).version;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Escape a string for use inside a Ruby double-quoted ("...") literal.
  * Handles backslash, double-quote, and `#` (otherwise `#{...}` would trigger
  * string interpolation).  Apply at every interpolation site that embeds a
@@ -247,12 +265,16 @@ export class RubyGenerator extends Generator {
     this.code.indentation = 2;
   }
 
+  /** Package root of the module being generated (captured in load) */
+  private packageRoot?: string;
+
   public override async load(packageRoot: string, assembly: reflect.Assembly): Promise<void> {
     // Out-of-band naming (JSII_RUBY_TARGET_CONFIG) merges into the assembly
     // spec before generation reads targets.ruby anywhere. Also applied by
     // RubyTarget's constructor; the merge is idempotent and this covers
     // direct Generator use (tests, tooling).
     applyRubyTargetOverlay(assembly.spec);
+    this.packageRoot = packageRoot;
     return super.load(packageRoot, assembly);
   }
 
@@ -2071,15 +2093,28 @@ export class RubyGenerator extends Generator {
     );
 
     if (this.assembly.dependencies) {
+      // JSII_RUBY_PIN_DEPENDENCIES=exact pins each dependency gem to the
+      // version actually installed next to the generated package, instead of
+      // translating the npm semver range. Distribution policy for feeds that
+      // publish the whole closure atomically: consumers resolve exactly the
+      // set that was generated and tested together, never a newer dependency
+      // this gem has not seen. Falls back to the translated range when the
+      // dependency is not resolvable from the package root.
+      const pinExact = process.env.JSII_RUBY_PIN_DEPENDENCIES === 'exact';
       for (const [depName, version] of Object.entries(
         this.assembly.dependencies,
       )) {
         const depInfo = this.assembly.dependencyClosure?.[depName];
         const depGem = depInfo?.targets?.ruby?.gem as string | undefined;
         if (depGem) {
-          gemspecContent.push(
-            `  s.add_dependency '${rubySq(depGem)}', ${toRubyVersionRange(version)}`,
-          );
+          const pinned = pinExact
+            ? resolveInstalledVersion(depName, this.packageRoot)
+            : undefined;
+          const requirement =
+            pinned !== undefined
+              ? `'= ${rubySq(toRubyReleaseVersion(pinned))}'`
+              : toRubyVersionRange(version);
+          gemspecContent.push(`  s.add_dependency '${rubySq(depGem)}', ${requirement}`);
         }
       }
     }

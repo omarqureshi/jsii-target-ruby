@@ -1,0 +1,15 @@
+/* Universal design tokens for the Ruby CDK site — the one place the shared
+   colour palette lives. Imported by theme.css (feed + docs landings) and by
+   docs-theme.css (YARD class pages). Context-specific colours (code-token
+   highlighting, YARD's --code-bg/--tok-label) stay in those consumers. */
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbfc; --ink: #1a1a1e; --muted: #70707a; --line: #e6e6ea;
+  --accent: #cc342d; --panel: #f4f4f6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131317; --ink: #e9e9ee; --muted: #9a9aa6; --line: #2a2a33;
+    --accent: #e2564f; --panel: #1c1c22;
+  }
+}

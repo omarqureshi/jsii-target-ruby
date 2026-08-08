@@ -1,0 +1,40 @@
+/* Base theme for the two landing pages (gem feed + docs). Imports the universal
+   palette from tokens.css and adds the base element styles + code-highlighting
+   colours the landings share. Each page also loads a small page-specific
+   stylesheet (feed-index.css / docs-index.css) for its own components. Served
+   from /styles/ and linked protocol-relative; the @import resolves within
+   /styles/. */
+@import url("tokens.css");
+
+:root {
+  --live: #157f3b;
+  --tok-const: #6f42c1; --tok-str: #0a7d33; --tok-sym: #b5690a; --tok-num: #0a5fb4;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --live: #4ec27a;
+    --tok-const: #b392f0; --tok-str: #7ec97e; --tok-sym: #e0a458; --tok-num: #79b8ff;
+  }
+}
+
+/* base */
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.wrap { margin: 0 auto; padding: 2.5rem 1.25rem 4rem; } /* page css sets max-width */
+a { color: var(--accent); }
+h1 { font-size: 1.9rem; margin: 0 0 .2rem; letter-spacing: -.02em; }
+h1 .r { color: var(--accent); }
+p.sub { color: var(--muted); margin: .1rem 0 1rem; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+footer { margin-top: 2rem; color: var(--muted); font-size: .85rem; border-top: 1px solid var(--line); padding-top: 1rem; text-align: center; }
+
+/* code blocks + Rouge token colors (both pages) */
+pre.cb { background: var(--panel); padding: .8rem 1rem; border-radius: 8px; overflow-x: auto; margin: .5rem 0; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+pre.cb code { background: none; padding: 0; font-size: inherit; white-space: pre; }
+pre.cb .k, pre.cb .kp, pre.cb .kd, pre.cb .kn { color: var(--accent); }
+pre.cb .no, pre.cb .nc, pre.cb .nn, pre.cb .nb { color: var(--tok-const); }
+pre.cb .s, pre.cb .s1, pre.cb .s2, pre.cb .sb, pre.cb .sd, pre.cb .dl, pre.cb .si, pre.cb .sx { color: var(--tok-str); }
+pre.cb .ss, pre.cb .nl { color: var(--tok-sym); }
+pre.cb .mi, pre.cb .mf, pre.cb .il { color: var(--tok-num); }
+pre.cb .c, pre.cb .c1, pre.cb .cm, pre.cb .cs { color: var(--muted); font-style: italic; }
+pre.cb .nf, pre.cb .n, pre.cb .nx, pre.cb .ni { color: var(--ink); }
+pre.cb .o, pre.cb .p, pre.cb .py, pre.cb .gp { color: var(--muted); }

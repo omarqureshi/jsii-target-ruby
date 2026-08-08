@@ -1,0 +1,156 @@
+/* ===================================================================
+   AWS CDK for Ruby — docs theme
+   Loaded as YARD's common.css (last, so it overrides style.css).
+   Re-skins the generated class pages to match the index/landing pages.
+   The universal palette comes from the shared tokens.css (imported below);
+   only YARD's own code-highlighting colours + --code-bg live here. Baked into
+   the YARD tree, so the @import is an absolute /styles/ URL.
+   =================================================================== */
+@import url("//rubygems.omarqureshi.net/styles/tokens.css");
+
+:root {
+  --code-bg: #f6f6f8;
+  --tok-const: #2d7dd2; --tok-str: #157f3b; --tok-sym: #7a5cd0; --tok-num: #c26a1e; --tok-label: #0e8a6f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --code-bg: #1b1b21;
+    --tok-const: #66b2ff; --tok-str: #5cc98a; --tok-sym: #b39dff; --tok-num: #e0975a; --tok-label: #3dd6b0;
+  }
+}
+
+/* ---- base ---- */
+body { background: var(--bg) !important; color: var(--ink) !important;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; }
+#main, #content { background: var(--bg) !important; color: var(--ink); }
+a, a:visited { color: var(--accent); }
+code, tt, pre, .signature, tt.object_link {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important; }
+
+/* ---- header / breadcrumb / search ---- */
+#header, #menu { background: var(--bg) !important; color: var(--muted) !important;
+  border-color: var(--line) !important; }
+#menu a { color: var(--accent); }
+#menu .title { color: var(--ink); }
+#search a { color: var(--muted) !important; background: var(--panel) !important;
+  border: 1px solid var(--line) !important; border-radius: .35rem; }
+#search a:hover { color: var(--accent) !important; }
+
+/* ---- headings ---- */
+h1, h2, h3, h4 { color: var(--ink) !important; border-color: var(--line) !important; }
+h1 { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+h2 small, h2 small a { color: var(--muted) !important; }
+/* page title: drop YARD's dotted top border + extra top space so it aligns with
+   the crumb spacing exactly like the index/landing pages */
+#content > h1 { margin-top: 0 !important; padding-top: 0 !important; border-top: none !important; }
+
+/* ---- docstrings / tags / notes / tables ---- */
+.docstring, .tags, .tags p, .discussion { color: var(--ink); }
+.tags .tag_title { color: var(--muted); }
+.docstring p > code, .docstring p > tt, .tags p > code, .tags p > tt {
+  background: var(--code-bg); border: 1px solid var(--line); color: var(--ink);
+  border-radius: .25rem; padding: 0 .3em; }
+.note { background: var(--panel) !important; border-color: var(--line) !important;
+  color: var(--ink) !important; }
+.note.deprecated { border-left: 3px solid var(--accent) !important; }
+.docstring table th, .docstring table td { border-color: var(--line) !important; }
+.docstring table tr:nth-child(odd), .docstring table tr:nth-child(even) { background: var(--panel) !important; }
+
+/* ---- method signatures / summary ---- */
+.summary_signature, p.signature, h3.signature, .method_details .signature {
+  background: var(--panel) !important; border: 1px solid var(--line) !important;
+  color: var(--ink) !important; }
+.summary_signature a, .signature .name { color: var(--accent) !important; }
+ul.summary li, .method_details { border-color: var(--line) !important; }
+
+/* ---- code blocks / @example ---- */
+pre.code, .docstring pre.code, #filecontents pre.code, .source_code pre {
+  background: var(--code-bg) !important; border: 1px solid var(--line) !important;
+  color: var(--ink) !important; border-radius: .5rem; padding: .9rem 1rem !important; }
+
+/* ---- syntax tokens (YARD's own highlighter classes; legible light + dark) ---- */
+pre.code .comment { color: var(--muted) !important; font-style: italic; }
+pre.code .info { color: var(--muted) !important; }              /* "# File ..." source header */
+pre.code .kw { color: var(--accent) !important; }               /* def/end/class/module... */
+pre.code .const { color: var(--tok-const) !important; }         /* AWSCDK, S3, Table */
+pre.code .tstring, pre.code .tstring_content,
+pre.code .tstring_beg, pre.code .tstring_end,
+pre.code .regexp { color: var(--tok-str) !important; }          /* strings */
+pre.code .symbol { color: var(--tok-sym) !important; }          /* :sym */
+pre.code .label { color: var(--tok-label) !important; }         /* hash keys / kwargs -> prop: */
+pre.code .int, pre.code .float { color: var(--tok-num) !important; }
+pre.code .ivar { color: var(--tok-sym) !important; }
+pre.code .id { color: var(--ink) !important; }                  /* identifiers / method names */
+pre.code .object_link a { color: var(--tok-const) !important; }
+/* punctuation muted so keywords/consts/labels read clearly */
+pre.code .comma, pre.code .period, pre.code .op,
+pre.code .lparen, pre.code .rparen, pre.code .lbrace, pre.code .rbrace,
+pre.code .lbracket, pre.code .rbracket { color: var(--muted) !important; }
+
+/* ---- footer ---- */
+#footer { border-color: var(--line) !important; color: var(--muted) !important; }
+#footer a { color: var(--accent); }
+
+/* ===================================================================
+   Surface fixes: YARD hardcodes ~30 light backgrounds; map every
+   text-bearing one to a theme surface so nothing goes white-on-white
+   in dark mode (and stays consistent in light mode).
+   =================================================================== */
+/* plain (--bg) surfaces */
+#nav, #filecontents table th, #filecontents table td,
+#filecontents table tr:nth-child(odd), #filecontents table tr:nth-child(even),
+.box_info dl:nth-child(odd) > *, .box_info dl:nth-child(even) > *, .box_info dl > * {
+  background: var(--bg) !important; color: var(--ink) !important; border-color: var(--line) !important; }
+
+/* panel (--panel) surfaces: signatures, TOC, toggles, overloads, inheritance "show all" */
+#toc, #toc.hidden, #toc.hidden:hover, .toggleDefines, .inheritanceTree, h2 small a,
+.summary_signature, .summary_signature.deprecated, h3.signature,
+.tags .overload .overload_item .signature, .tags pre.example {
+  background: var(--panel) !important; color: var(--ink) !important; border-color: var(--line) !important; }
+.inheritanceTree, .toggleDefines { border-left-color: var(--line) !important; }
+.inheritanceTree { color: var(--accent) !important; }   /* the "show all" link */
+
+/* inline code everywhere (was #f7f7f9 / #f9f2f4) */
+*:not(pre) > code, .tags p > tt, .docstring p > tt, .summary_desc tt {
+  background: var(--code-bg) !important; color: var(--ink) !important; border: 1px solid var(--line) !important; }
+
+/* cross-reference link pills (drop the light-blue chip) */
+.docstring .object_link a, .docstring pre.code .object_link a,
+#content .summary_desc .object_link a {
+  background: transparent !important; color: var(--tok-const) !important; }
+
+/* notes / callouts */
+.note, .note.title, .note.returns_void {
+  background: var(--panel) !important; color: var(--ink) !important; border-color: var(--line) !important; }
+.note.deprecated, .note.title.deprecated {
+  background: var(--panel) !important; color: var(--ink) !important; border-left: 3px solid var(--accent) !important; }
+.note.todo, .note.private {
+  background: var(--panel) !important; color: var(--ink) !important; border-left: 3px solid var(--tok-num) !important; }
+
+/* misc: kill the yellow anchor-hover, neutralize source-view line striping */
+#content a:hover, #main a:hover { background: transparent !important; }
+li.r1, li.r2 { background: transparent !important; }
+
+/* ===================================================================
+   Navigation: YARD's frame nav (#nav iframe -> class_list) is broken by
+   our per-module merge, and the #menu breadcrumb isn't linked. Hide all
+   of it and use the injected .cdk-crumb instead (see inject-crumb.rb).
+   =================================================================== */
+.nav_wrap, #nav, #resizer, #search, #menu { display: none !important; }
+/* Sidebar removed: abandon YARD's fixed-height / independent-scroll frame layout
+   (html,body height:100% + #main overflow:auto) so the page scrolls normally
+   instead of #main showing its own floating scrollbar. */
+html, body { height: auto !important; overflow: visible !important; }
+body { display: block !important; }
+#main { display: block !important; flex: none !important; height: auto !important;
+  overflow: visible !important; max-width: 1120px; margin: 0 auto !important;
+  float: none !important; width: auto !important;
+  padding: 2rem 0 4rem !important; }   /* border-box #main: zero L/R so content spans the
+                                          full centered 1120px, aligning with the
+                                          content-box .wrap on the index/landing pages */
+.cdk-crumb { margin: 0 0 1rem; padding: 0;
+  font: 600 .85rem system-ui, -apple-system, sans-serif; }
+.cdk-crumb a { color: var(--accent); text-decoration: none; }
+.cdk-crumb a:hover { text-decoration: underline; }
+.cdk-crumb .sep { color: var(--muted); margin: 0 .45rem; font-weight: 400; }
+.cdk-crumb .cur { color: var(--muted); font-weight: 400; font-family: ui-monospace, monospace; }
