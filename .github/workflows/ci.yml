@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Bootstrap toolchain
+        uses: ./.github/actions/bootstrap-toolchain
+        with:
+          build-jsii-calc: 'true'
+
+      - name: Install @jsii/runtime (published) for the compliance kernel
+        run: |
+          mkdir -p /tmp/jsii-runtime-install
+          (cd /tmp/jsii-runtime-install && npm init -y > /dev/null && npm install @jsii/runtime)
+          ln -sfn /tmp/jsii-runtime-install/node_modules/@jsii/runtime node_modules/@jsii/runtime
+
+      - name: Unit tests (naming, version mapping, overlay, rosetta corpus)
+        run: npm run test:unit
+
+      - name: Compliance suite (generate jsii-calc via --plugin, run RSpec)
+        run: npm run test:compliance

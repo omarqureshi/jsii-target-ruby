@@ -1,0 +1,94 @@
+name: build-cdk
+
+# Builds Ruby gems for the AWS CDK from *published npm artifacts* through
+# stock jsii-pacmak with this plugin: naming arrives via the target-config
+# overlay (config/cdk-targets.json), no aws-cdk fork or assembly rebuild
+# involved. Produces the gems as workflow artifacts, gated by a naming-sync
+# check and a synth smoke test.
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws-cdk-lib-version:
+        description: aws-cdk-lib version to build (an npm dist-tag or exact version)
+        default: latest
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Bootstrap toolchain
+        uses: ./.github/actions/bootstrap-toolchain
+
+      - name: Install aws-cdk-lib@${{ inputs.aws-cdk-lib-version }} (published artifacts)
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p cdk-build && cd cdk-build
+          npm init -y > /dev/null
+          npm install --save "aws-cdk-lib@${{ inputs.aws-cdk-lib-version }}" @jsii/runtime
+          node -p "require('aws-cdk-lib/package.json').version" > VERSION
+          echo "aws-cdk-lib $(cat VERSION)"
+
+      - name: Naming-sync check (new submodules need a deliberate decision)
+        run: node scripts/check-cdk-naming.js "${{ runner.temp }}/cdk-build/node_modules/aws-cdk-lib"
+
+      - name: Generate and build gems (whole closure, dependency order)
+        env:
+          JSII_RUBY_TARGET_CONFIG: ${{ github.workspace }}/config/cdk-targets.json
+        run: |
+          workdir="${{ runner.temp }}/cdk-build"
+          node scripts/cdk-closure.js "${workdir}/node_modules/aws-cdk-lib" "${workdir}/node_modules" | while read -r pkg; do
+            echo "::group::pacmak ${pkg}"
+            node toolchain/jsii/packages/jsii-pacmak/bin/jsii-pacmak \
+              --plugin "$(pwd)" \
+              -t ruby --force-target \
+              -o "${workdir}/dist" "${workdir}/node_modules/${pkg}"
+            echo "::endgroup::"
+          done
+          gem build runtime/jsii-ruby-runtime.gemspec -o "${workdir}/dist/ruby/jsii-ruby-runtime.gem"
+          ls -la "${workdir}/dist/ruby/"*.gem
+
+      - name: Syntax-check every generated file
+        run: |
+          cd "${{ runner.temp }}/cdk-build/dist/ruby/lib"
+          count=$(find . -name '*.rb' | wc -l)
+          find . -name '*.rb' -print0 | xargs -0 -P "$(nproc)" -n 200 ruby -c > /dev/null
+          echo "ruby -c: ${count} files clean"
+
+      - name: Synth smoke test
+        run: |
+          workdir="${{ runner.temp }}/cdk-build"
+          export GEM_HOME="${workdir}/gemhome"
+          (cd "${workdir}/dist/ruby" && gem install --local --no-document ./*.gem)
+          JSII_RUNTIME="${workdir}/node_modules/@jsii/runtime/bin/jsii-runtime" \
+            ruby -e "Gem.paths = ENV; require '${{ github.workspace }}/scripts/synth-smoke'"
+
+      - name: Upload gems
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdk-ruby-gems-${{ inputs.aws-cdk-lib-version }}
+          path: ${{ runner.temp }}/cdk-build/dist/ruby/*.gem
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          workdir="${{ runner.temp }}/cdk-build"
+          {
+            echo "## CDK Ruby gems — built from published npm artifacts via \`--plugin\`"
+            echo
+            echo "| gem | size |"
+            echo "| --- | --- |"
+            for gem in "${workdir}/dist/ruby/"*.gem; do
+              echo "| $(basename "$gem") | $(du -h "$gem" | cut -f1) |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

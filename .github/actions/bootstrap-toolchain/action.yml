@@ -1,0 +1,78 @@
+name: Bootstrap jsii toolchain
+description: >
+  Checks out and builds the jsii toolchain branches that carry the pacmak
+  plugin API (unreleased), then links this plugin against them. Every step
+  mirrors a locally validated sequence; when the plugin API ships in released
+  packages this action collapses to `npm install`.
+
+inputs:
+  jsii-repo:
+    description: jsii monorepo (owner/repo)
+    default: omarqureshi/jsii
+  jsii-ref:
+    description: jsii branch with the pacmak plugin API
+    default: jsii-language-plugins
+  rosetta-repo:
+    description: jsii-rosetta repo (owner/repo)
+    default: omarqureshi/jsii-rosetta
+  rosetta-ref:
+    description: jsii-rosetta branch with the language registry + corpus
+    default: jsii-language-plugins
+  build-jsii-calc:
+    description: also build the jsii-calc fixture chain (needed by the compliance suite)
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout jsii (${{ inputs.jsii-ref }})
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.jsii-repo }}
+        ref: ${{ inputs.jsii-ref }}
+        path: toolchain/jsii
+
+    - name: Checkout jsii-rosetta (${{ inputs.rosetta-ref }})
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.rosetta-repo }}
+        ref: ${{ inputs.rosetta-ref }}
+        path: toolchain/jsii-rosetta
+
+    - name: Enable corepack (yarn 4)
+      shell: bash
+      run: corepack enable
+
+    - name: Build jsii-pacmak and its workspace dependencies
+      shell: bash
+      working-directory: toolchain/jsii
+      env:
+        YARN_ENABLE_IMMUTABLE_INSTALLS: 'false'
+      run: |
+        yarn install
+        yarn workspace @jsii/spec run build
+        cd packages/jsii-pacmak
+        yarn gen
+        npx tsc --build
+        chmod +x bin/jsii-pacmak
+
+    - name: Build jsii-calc fixture chain
+      if: inputs.build-jsii-calc == 'true'
+      shell: bash
+      working-directory: toolchain/jsii
+      run: npx lerna run build --scope jsii-calc --include-dependencies --stream
+
+    - name: Build jsii-rosetta
+      shell: bash
+      working-directory: toolchain/jsii-rosetta
+      env:
+        YARN_ENABLE_IMMUTABLE_INSTALLS: 'false'
+      run: |
+        yarn install
+        npx projen compile
+
+    - name: Link plugin against the toolchain and build it
+      shell: bash
+      run: |
+        ./scripts/link-toolchain.sh toolchain/jsii toolchain/jsii-rosetta
+        npm run build
