@@ -9,6 +9,7 @@ import { Generator, Legalese } from 'jsii-pacmak/lib/generator';
 import { Target, TargetOptions } from 'jsii-pacmak/lib/target';
 import { subprocess } from 'jsii-pacmak/lib/util';
 import { VERSION } from 'jsii-pacmak/lib/version';
+import { applyRubyTargetOverlay } from './target-config';
 import { toRubyReleaseVersion, toRubyVersionRange } from './version-utils';
 
 export class RubyTarget extends Target {
@@ -16,6 +17,9 @@ export class RubyTarget extends Target {
 
   public constructor(options: TargetOptions) {
     super(options);
+    // Out-of-band naming (JSII_RUBY_TARGET_CONFIG) merges into the assembly
+    // spec before anything reads targets.ruby from it.
+    applyRubyTargetOverlay(options.assembly.spec);
     this.generator = new RubyGenerator(options.rosetta, options);
   }
 
@@ -242,6 +246,15 @@ export class RubyGenerator extends Generator {
     super({ runtimeTypeChecking: options.runtimeTypeChecking });
     // Ruby convention is 2-space indentation (CodeMaker defaults to 4).
     this.code.indentation = 2;
+  }
+
+  public override async load(packageRoot: string, assembly: reflect.Assembly): Promise<void> {
+    // Out-of-band naming (JSII_RUBY_TARGET_CONFIG) merges into the assembly
+    // spec before generation reads targets.ruby anywhere. Also applied by
+    // RubyTarget's constructor; the merge is idempotent and this covers
+    // direct Generator use (tests, tooling).
+    applyRubyTargetOverlay(assembly.spec);
+    return super.load(packageRoot, assembly);
   }
 
   /**
