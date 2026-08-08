@@ -8,7 +8,6 @@ import * as path from 'path';
 import { Generator, Legalese } from 'jsii-pacmak/lib/generator';
 import { Target, TargetOptions } from 'jsii-pacmak/lib/target';
 import { subprocess } from 'jsii-pacmak/lib/util';
-import { VERSION } from 'jsii-pacmak/lib/version';
 import { applyRubyTargetOverlay } from './target-config';
 import { toRubyReleaseVersion, toRubyVersionRange } from './version-utils';
 
@@ -2062,7 +2061,12 @@ export class RubyGenerator extends Generator {
     gemspecContent.push(
       `  s.files       = Dir["lib/**/*"] + Dir["sig/**/*"]`,
       `  s.required_ruby_version = '>= 3.3.0'`,
-      `  s.add_dependency 'jsii-ruby-runtime', ${toRubyVersionRange(`^${VERSION}`)}`,
+      // The runtime pairing is the PLUGIN's contract, not pacmak's: this
+      // range must accept the jsii-ruby-runtime gem this plugin version was
+      // developed against (runtime/jsii-ruby-runtime.gemspec, in lockstep
+      // with the plugin's own version). Deriving it from pacmak's VERSION
+      // breaks on dev builds of the toolchain, where VERSION is 0.0.0.
+      `  s.add_dependency 'jsii-ruby-runtime', '~> 0.1'`,
       `  s.add_dependency 'base64', '~> 0.2'`,
     );
 
