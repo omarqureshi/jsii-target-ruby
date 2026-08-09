@@ -1,4 +1,4 @@
 require 'scope-aws-lambda'
-Lambda::ClassFromLambda.new({
+Scope::AwsLambda::ClassFromLambda.new({
     key: "lambda.amazonaws.com",
 })

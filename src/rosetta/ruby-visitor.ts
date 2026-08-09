@@ -153,7 +153,7 @@ function rubyNameOf(context: RubyVisitorContext, node: ts.Node): OTree | undefin
  * Inspects the associated JSII assembly target metadata for explicit module configuration
  * (e.g. `ruby.module`) and package-specific acronyms to output accurate namespaces.
  */
-function findRubyName(jsiiSymbol: JsiiSymbol): string | undefined {
+export function findRubyName(jsiiSymbol: JsiiSymbol): string | undefined {
   if (!jsiiSymbol.sourceAssembly?.assembly) {
     // Don't have accurate info, just guess from the FQN
     return jsiiSymbol.symbolType !== 'module' ? simpleName(jsiiSymbol.fqn) : guessRubyModuleName(jsiiSymbol.fqn);
@@ -161,15 +161,24 @@ function findRubyName(jsiiSymbol: JsiiSymbol): string | undefined {
 
   const asm = jsiiSymbol.sourceAssembly.assembly;
 
+  // The overlay takes precedence over the assembly's own ruby target, exactly
+  // as applyRubyTargetOverlay merges it for generation. Rosetta loads its own
+  // copy of the assembly, which the generator's in-place merge never touches —
+  // so without this, a library whose Ruby naming lives entirely in the overlay
+  // (aws-cdk-lib: no `targets.ruby` at all) renders examples under a derived
+  // root like `AwsCdkLib::AwsS3` instead of `AWSCDK::S3`.
+  const entry = loadRubyTargetOverlay()?.[asm.name];
+
   // The same walk the generator uses (deepest explicit prefix wins, the
-  // rest derives with the owning assembly's acronyms), fed from rosetta's
-  // assembly metadata.
+  // rest derives with the owning assembly's acronyms).
   return resolveRubyModulePath(jsiiSymbol.fqn.split('#')[0], {
     assemblyName: asm.name,
-    acronyms: (asm.targets?.ruby?.acronyms as string[] | undefined) ?? [],
-    rootModule: () => jsiiTargetParameter(asm, 'ruby.module'),
+    acronyms:
+      (entry?.acronyms as string[] | undefined) ?? (asm.targets?.ruby?.acronyms as string[] | undefined) ?? [],
+    rootModule: () => entry?.module ?? jsiiTargetParameter(asm, 'ruby.module'),
     submoduleModule: (submoduleFqn) =>
-      asm.submodules?.[submoduleFqn] ? jsiiTargetParameter(asm.submodules[submoduleFqn], 'ruby.module') : undefined,
+      entry?.submodules?.[submoduleFqn]?.module ??
+      (asm.submodules?.[submoduleFqn] ? jsiiTargetParameter(asm.submodules[submoduleFqn], 'ruby.module') : undefined),
   });
 }
 
@@ -213,6 +222,19 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
    */
   private readonly emittedRequires = new Set<string>();
 
+  /**
+   * Local import alias -> the jsii fqn of the module it names, for the source
+   * file currently being rendered.
+   *
+   * Most published examples are marked "generated from non-compiling source":
+   * rosetta cannot resolve their symbols, so a type reference falls back to
+   * rendering the local alias and `s3.Bucket` becomes `S3::Bucket` — a
+   * constant that does not exist. The import statement is the only thing tying
+   * the alias to an assembly, so remember it. Reset per source file alongside
+   * {@link emittedRequires}, for the same reason.
+   */
+  private readonly importedModuleFqns = new Map<string, string>();
+
   public constructor() {
     super();
   }
@@ -223,6 +245,7 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
 
   public override sourceFile(node: ts.SourceFile, context: RubyVisitorContext): OTree {
     this.emittedRequires.clear();
+    this.importedModuleFqns.clear();
     return super.sourceFile(node, context);
   }
 
@@ -231,6 +254,35 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
    * Maps relative paths to `require_relative` and package dependencies to `require` with scoped
    * names converted to standard gem naming format (e.g. @scope/pkg -> scope-pkg).
    */
+  /**
+   * Record which module a full (`import * as x`) import names, so later type
+   * references through that alias can be qualified.
+   *
+   * The npm specifier's path segments are the submodule: `aws-cdk-lib/aws-s3`
+   * is the `aws_s3` submodule of `aws-cdk-lib`. Selective imports
+   * (`import { Bucket } from ...`) bind type names directly rather than a
+   * namespace, so there is no alias to record.
+   */
+  private rememberImportedModule(node: ImportStatement, pkg: string, submodulePath: string[]): void {
+    if (node.imports.import !== 'full') {
+      return;
+    }
+    const fqn = [pkg, ...submodulePath.map((seg) => seg.replace(/-/g, '_'))].join('.');
+    for (const alias of [node.imports.sourceName, node.imports.alias]) {
+      if (alias) {
+        this.importedModuleFqns.set(alias, fqn);
+      }
+    }
+  }
+
+  /**
+   * The Ruby module path for a local import alias, if it names one.
+   */
+  private rubyModuleForAlias(alias: string): string | undefined {
+    const fqn = this.importedModuleFqns.get(alias);
+    return fqn ? guessRubyModuleName(fqn) : undefined;
+  }
+
   public override importStatement(node: ImportStatement, _context: RubyVisitorContext): OTree {
     if (node.packageName.startsWith('.')) {
       return this.renderRequire(`require_relative '${node.packageName}'`);
@@ -244,6 +296,9 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     // that declares a custom gem name gets correct requires in its docs.
     const parts = node.packageName.split('/');
     const pkg = node.packageName.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+
+    this.rememberImportedModule(node, pkg, parts.slice(node.packageName.startsWith('@') ? 2 : 1));
+
     const gemName = loadRubyTargetOverlay()?.[pkg]?.gem ?? rubyGemName({ name: pkg });
     return this.renderRequire(`require '${gemName}'`);
   }
@@ -397,7 +452,10 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
 
       let exprNode = context.updateContext({ inTypeExpression: inTypeExpr }).convert(node.expression);
       if (inTypeExpr && ts.isIdentifier(node.expression)) {
-        exprNode = new OTree([rubyModuleName(context.textOf(node.expression))]);
+        // An import alias resolves to its assembly's module path (overlay
+        // aware); anything else can only be PascalCased as-is.
+        const text = context.textOf(node.expression);
+        exprNode = new OTree([this.rubyModuleForAlias(text) ?? rubyModuleName(text)]);
       }
 
       let nameNode = context.convert(node.name);

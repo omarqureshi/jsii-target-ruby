@@ -1,5 +1,6 @@
 import * as assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import * as path from 'node:path';
+import { after, before, describe, test } from 'node:test';
 
 import { translateTypeScript } from 'jsii-rosetta/lib/translate';
 
@@ -93,5 +94,50 @@ describe('struct property reads', () => {
       ].join('\n'),
     );
     assert.match(ruby, /props\[:bucket_name\]/, `expected hash-index read in:\n${ruby}`);
+  });
+});
+
+describe('import aliases qualify type references', () => {
+  // Most aws-cdk-lib examples are marked "generated from non-compiling
+  // source": rosetta cannot resolve their symbols, so type references fall
+  // back to rendering the local import alias. `s3.Bucket` became `S3::Bucket`,
+  // which raises NameError when pasted — the root module is not optional in
+  // Ruby. The alias is the only thing tying the reference to its assembly, so
+  // the import statement has to be remembered.
+  const OVERLAY = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+
+  before(() => {
+    process.env.JSII_RUBY_TARGET_CONFIG = OVERLAY;
+  });
+  after(() => {
+    delete process.env.JSII_RUBY_TARGET_CONFIG;
+  });
+
+  test('a submodule import qualifies with the root module', () => {
+    const ruby = toRuby(
+      ["import * as s3 from 'aws-cdk-lib/aws-s3';", "new s3.Bucket(this, 'B');"].join('\n'),
+    );
+    assert.match(ruby, /AWSCDK::S3::Bucket/);
+  });
+
+  test('a root package import qualifies too', () => {
+    const ruby = toRuby(
+      ["import * as cdk from 'aws-cdk-lib';", "new cdk.Stack(app, 'S');"].join('\n'),
+    );
+    assert.match(ruby, /AWSCDK::Stack/);
+  });
+
+  test('the overlay acronym casing is applied to the submodule', () => {
+    const ruby = toRuby(
+      ["import * as ec2 from 'aws-cdk-lib/aws-ec2';", "new ec2.Vpc(this, 'V');"].join('\n'),
+    );
+    assert.match(ruby, /AWSCDK::EC2::/);
+  });
+
+  test('an unknown package still renders its alias, not a bogus prefix', () => {
+    const ruby = toRuby(
+      ["import * as other from 'some-other-lib';", "new other.Thing();"].join('\n'),
+    );
+    assert.match(ruby, /SomeOtherLib::Thing/);
   });
 });
