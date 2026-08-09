@@ -1,6 +1,5 @@
 import * as spec from '@jsii/spec';
-import { toSnakeCase, toPascalCase } from 'codemaker';
-import * as fs from 'fs-extra';
+import { toSnakeCase } from 'codemaker';
 import * as reflect from 'jsii-reflect';
 import { ApiLocation } from 'jsii-rosetta';
 import * as path from 'path';
@@ -8,8 +7,11 @@ import * as path from 'path';
 import { Generator, Legalese } from 'jsii-pacmak/lib/generator';
 import { Target, TargetOptions } from 'jsii-pacmak/lib/target';
 import { subprocess } from 'jsii-pacmak/lib/util';
+import { generateGemspec, rubyGemName } from './gemspec';
+import * as helpers from './helpers';
+import { rubySq, rubyJsonLiteral } from './helpers';
+import { generateRbs } from './rbs';
 import { applyRubyTargetOverlay } from './target-config';
-import { toRubyReleaseVersion, toRubyVersionRange } from './version-utils';
 
 export class RubyTarget extends Target {
   protected readonly generator: RubyGenerator;
@@ -44,33 +46,6 @@ export class RubyTarget extends Target {
   }
 }
 
-function rubyGemName(assembly: {
-  name: string;
-  targets?: spec.AssemblyTargets;
-}): string {
-  return (
-    (assembly.targets?.ruby?.gem as string | undefined) ??
-    assembly.name.replace(/@/g, '').replace(/\//g, '-')
-  );
-}
-
-/**
- * Version of a dependency as installed relative to a package root, or
- * `undefined` when unresolvable (dependency absent, or its exports map does
- * not expose package.json). Used for exact dependency pinning
- * (JSII_RUBY_PIN_DEPENDENCIES=exact).
- */
-export function resolveInstalledVersion(depName: string, packageRoot: string | undefined): string | undefined {
-  if (packageRoot === undefined) {
-    return undefined;
-  }
-  try {
-    const pkgJson = require.resolve(`${depName}/package.json`, { paths: [packageRoot] });
-    return JSON.parse(fs.readFileSync(pkgJson, 'utf-8')).version;
-  } catch {
-    return undefined;
-  }
-}
 
 /**
  * Escape a string for use inside a Ruby double-quoted ("...") literal.
@@ -82,50 +57,6 @@ function rubyDq(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/#/g, '\\#');
 }
 
-/**
- * Escape a string for use inside a Ruby single-quoted ('...') literal.
- * Single-quoted strings only treat `\\` and `\'` specially.
- */
-function rubySq(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
-
-/**
- * Escape a string for literal use inside a RegExp pattern.
- */
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Render a JS value as a Ruby expression that evaluates to JSON.parse of the
- * value's canonical JSON encoding.  Base64 keeps the embedded literal safe
- * from any input — no backslashes, quotes, `#{...}`, or newlines to escape.
- * Replaces the previous `%q{${JSON.stringify(...)}}` pattern, which silently
- * mangled any backslash in the JSON (Ruby's `%q{}` does not preserve `\\`).
- */
-function rubyJsonLiteral(value: any): string {
-  const json = JSON.stringify(value ?? { primitive: 'any' });
-  const b64 = Buffer.from(json, 'utf-8').toString('base64');
-  return `JSON.parse(Base64.strict_decode64("${b64}"))`;
-}
-
-/**
- * Whether a jsii member (method, property, or enum value) is marked
- * `@deprecated` in the source assembly.  Used by the collision-resolution
- * pass to pick a winning member when multiple snake_case to the same name.
- *
- * The reflect API exposes two shapes:
- *   - Plain spec objects (used by enum members `typeSpec.members`):
- *     `docs?.deprecated` is `string | undefined`.
- *   - `Documentable.docs` instances (used by `allProperties` / `allMethods`):
- *     `.docs.deprecated` is a boolean that also reflects the parent type's
- *     deprecation status.
- * We treat any truthy value on either shape as deprecated.
- */
-function isDeprecated(member: { docs?: { deprecated?: unknown } }): boolean {
-  return !!member.docs?.deprecated;
-}
 
 /**
  * A type reference in either of the two shapes this generator handles:
@@ -147,47 +78,8 @@ interface ParamLike {
   readonly variadic?: boolean;
 }
 
-/**
- * Minimal structural shape required by the member-collision passes —
- * satisfied by reflect members (whose `docs.deprecated` is a boolean) and
- * raw spec members (where it is a string reason).
- */
-interface MemberLike {
-  readonly name: string;
-  readonly static?: boolean;
-  readonly docs?: { readonly deprecated?: unknown };
-}
 
-/**
- * Names that must be renamed (with a leading underscore) when used as Ruby
- * method/parameter identifiers.  Includes:
- *   - Ruby keywords (`end`, `class`, `def`, ...).  Using one as a method
- *     name produces a parse error.
- *   - The handful of Object methods the runtime hard-depends on
- *     (`send`, `__send__`) — without these the kernel can't dispatch back
- *     into a Ruby override.
- *   - Names the Ruby object model or the jsii runtime itself depends on:
- *     `initialize` (a member by that name would silently replace the
- *     generated constructor), `new` / `allocate` (class methods used to
- *     instantiate proxies — the registry hydrates refs via
- *     `klass.allocate`), `to_jsii` (struct serialization) and `ruby_class`
- *     (internal dispatch helper).
- *   - Additionally (not in this set — see `rubyName`): any name beginning
- *     with `jsii_` is prefixed, so generated members can never shadow the
- *     runtime's own API surface (`jsii_ref`, `jsii_serialize`,
- *     `jsii_call_method`, `jsii_properties`, ...), present or future.
- *
- * Other Object/Kernel methods (`method`, `methods`, `inspect`, `to_s`,
- * `hash`, ...) are deliberately NOT renamed: jsii-calc and real-world
- * assemblies use these names for legitimate JSII methods, and the
- * shadowing cost is mild (those methods are still reachable via
- * `Object.instance_method(:foo).bind(self).call(...)` or `__send__`).
- *
- * Must stay in sync with `Jsii::Utils::RUBY_RESERVED_NAMES` in
- * packages/@jsii/ruby-runtime/lib/jsii/utils.rb (enforced by a spec in
- * packages/@jsii/ruby-runtime-test/spec/unit/utils_spec.rb), so kernel
- * callbacks dispatch to the renamed member.
- */
+
 // A `require` / `require_relative` line in a rendered example. After import translation,
 // several imports from one package collapse to duplicate `require 'aws-cdk-lib'` lines;
 // these are de-duplicated before display so each require appears once.
@@ -208,58 +100,6 @@ function normalizeFences(markdown: string): string {
   );
 }
 
-/** De-duplicate `require` lines in a code snippet, keeping the first of each. */
-
-const RUBY_RESERVED_NAMES = new Set([
-  // Keywords
-  'alias',
-  'and',
-  'begin',
-  'break',
-  'case',
-  'class',
-  'def',
-  // NB: unreachable — toSnakeCase strips the question mark before lookup —
-  // kept so the list reads as the complete Ruby keyword set.
-  'defined?',
-  'do',
-  'else',
-  'elsif',
-  'end',
-  'ensure',
-  'false',
-  'for',
-  'if',
-  'in',
-  'module',
-  'next',
-  'nil',
-  'not',
-  'or',
-  'redo',
-  'rescue',
-  'retry',
-  'return',
-  'self',
-  'super',
-  'then',
-  'true',
-  'undef',
-  'unless',
-  'until',
-  'when',
-  'while',
-  'yield',
-  // Hard runtime dependencies (callbacks use `__send__` for dispatch).
-  'send',
-  '__send__',
-  // Ruby object-model / jsii-runtime hooks (see doc comment above).
-  'initialize',
-  'new',
-  'allocate',
-  'to_jsii',
-  'ruby_class',
-]);
 
 export class RubyGenerator extends Generator {
   public constructor(
@@ -372,7 +212,7 @@ export class RubyGenerator extends Generator {
    * `typeSpec.spec.initializer.parameters`.  Collection/union introspection
    * only works on the raw shape.
    */
-  private typeRefSpec(
+  public typeRefSpec(
     type: RubyTypeRef | undefined,
   ): spec.TypeReference | undefined {
     if (type instanceof reflect.TypeReference) {
@@ -381,7 +221,7 @@ export class RubyGenerator extends Generator {
     return type;
   }
 
-  private isStructFqn(fqn: string): boolean {
+  public isStructFqn(fqn: string): boolean {
     const type = this.reflectAssembly.system.tryFindFqn(fqn);
     return !!(type?.isInterfaceType() && type?.isDataType());
   }
@@ -466,95 +306,6 @@ export class RubyGenerator extends Generator {
    * `[...]`, unions use `|`.  When `optional` is set, the result is wrapped
    * nilable (`T?`).
    */
-  private rbsType(
-    ref: spec.TypeReference | undefined,
-    optional = false,
-  ): string {
-    const bare = this.rbsTypeBare(ref);
-    // `untyped` already admits nil; don't double-decorate.
-    return optional && bare !== 'untyped' ? `${bare}?` : bare;
-  }
-
-  private rbsTypeBare(ref: spec.TypeReference | undefined): string {
-    if (!ref) {
-      return 'untyped';
-    }
-    if (spec.isPrimitiveTypeReference(ref)) {
-      switch (ref.primitive) {
-        case spec.PrimitiveType.String:
-          return 'String';
-        case spec.PrimitiveType.Number:
-          return 'Numeric';
-        case spec.PrimitiveType.Boolean:
-          return 'bool';
-        case spec.PrimitiveType.Date:
-          return 'DateTime';
-        // `json` is recursively any-shaped and `any` is the escape hatch;
-        // both are honestly `untyped` rather than a flattened Hash/Object.
-        case spec.PrimitiveType.Json:
-        case spec.PrimitiveType.Any:
-          return 'untyped';
-      }
-    }
-    if (spec.isNamedTypeReference(ref)) {
-      return `::${this.rubyFullTypeName(ref.fqn)}`;
-    }
-    if (spec.isCollectionTypeReference(ref)) {
-      const elem = this.rbsTypeBare(ref.collection.elementtype);
-      return ref.collection.kind === spec.CollectionKind.Array
-        ? `Array[${elem}]`
-        : `Hash[String, ${elem}]`;
-    }
-    if (spec.isUnionTypeReference(ref)) {
-      const arms = [
-        ...new Set(ref.union.types.map((t) => this.rbsTypeBare(t))),
-      ];
-      // A bare `A | B` collides with RBS's method-overload separator, so
-      // unions must be parenthesized to be valid in return/param position.
-      return arms.length === 1 ? arms[0] : `(${arms.join(' | ')})`;
-    }
-    return 'untyped';
-  }
-
-  /**
-   * RBS type for a *parameter* position.  Struct-typed inputs also accept the
-   * idiomatic hash-literal form — the runtime coerces hashes into structs on
-   * serialization, recursively through arrays, maps and union arms — so the
-   * parameter surface widens struct references to `(Struct | Hash[Symbol,
-   * untyped])`.  Output positions (returns, attribute readers) keep the bare
-   * struct type: values coming back from the kernel are always hydrated
-   * struct instances, never hashes.
-   */
-  private rbsParamType(
-    ref: spec.TypeReference | undefined,
-    optional = false,
-  ): string {
-    const bare = this.rbsParamTypeBare(ref);
-    return optional && bare !== 'untyped' ? `${bare}?` : bare;
-  }
-
-  private rbsParamTypeBare(ref: spec.TypeReference | undefined): string {
-    if (!ref) {
-      return 'untyped';
-    }
-    if (spec.isNamedTypeReference(ref) && this.isStructFqn(ref.fqn)) {
-      return `(::${this.rubyFullTypeName(ref.fqn)} | Hash[Symbol, untyped])`;
-    }
-    if (spec.isCollectionTypeReference(ref)) {
-      const elem = this.rbsParamTypeBare(ref.collection.elementtype);
-      return ref.collection.kind === spec.CollectionKind.Array
-        ? `Array[${elem}]`
-        : `Hash[String, ${elem}]`;
-    }
-    if (spec.isUnionTypeReference(ref)) {
-      const arms = [
-        ...new Set(ref.union.types.map((t) => this.rbsParamTypeBare(t))),
-      ];
-      return arms.length === 1 ? arms[0] : `(${arms.join(' | ')})`;
-    }
-    return this.rbsTypeBare(ref);
-  }
-
   /**
    * Emit a block of text as `#`-prefixed comment lines.
    */
@@ -844,11 +595,11 @@ export class RubyGenerator extends Generator {
     this.emitModuleReadmes();
 
     // Generate the gemspec manifest file for package management
-    await this.generateGemspec(outdir);
+    await generateGemspec(this.reflectAssembly, this.packageRoot, outdir);
 
     // Emit RBS type signatures alongside the generated code (sig/), giving
     // Steep/TypeProf users static type checking and editor completion.
-    await this.generateRbs(outdir, sortedTypes);
+    await generateRbs(this, this.reflectAssembly.name, outdir, sortedTypes);
 
     return super.save(outdir, tarball, legalese);
   }
@@ -1521,7 +1272,7 @@ export class RubyGenerator extends Generator {
     this.code.line('');
   }
 
-  private rubyFullTypeName(fqn: string): string {
+  public rubyFullTypeName(fqn: string): string {
     if (fqn === 'any') return 'Object';
 
     const segments = fqn.split('.');
@@ -1635,23 +1386,8 @@ export class RubyGenerator extends Generator {
     return paths;
   }
 
-  private rubyName(name: string): string {
-    const snake = toSnakeCase(name);
-    if (RUBY_RESERVED_NAMES.has(snake)) {
-      return `_${snake}`;
-    }
-    // The `jsii_` prefix is reserved for the runtime's own API surface
-    // (`jsii_ref`, `jsii_serialize`, `jsii_call_method`, ...) — prefix any
-    // member that would land in it so generated code can never shadow a
-    // runtime method, present or future.
-    if (snake.startsWith('jsii_')) {
-      return `_${snake}`;
-    }
-    // Names starting with a digit are invalid Ruby identifiers.
-    if (/^\d/.test(snake)) {
-      return `_${snake}`;
-    }
-    return snake;
+  public rubyName(name: string): string {
+    return helpers.rubyName(name);
   }
 
   /**
@@ -1823,12 +1559,12 @@ export class RubyGenerator extends Generator {
    * Ruby parses `Foo.PROPERTY` and `Foo.property` as distinct method calls,
    * so both can coexist on the same class without ambiguity.
    */
-  private rubyPropertyName(prop: { name: string; const?: boolean }): string {
+  public rubyPropertyName(prop: { name: string; const?: boolean }): string {
     if (prop.const) return this.rubyConstName(prop.name);
     return this.rubyName(prop.name);
   }
 
-  private rubyMethodName(method: { name: string }): string {
+  public rubyMethodName(method: { name: string }): string {
     return this.rubyName(method.name);
   }
 
@@ -1854,107 +1590,22 @@ export class RubyGenerator extends Generator {
    * (`def self.foo` vs `def foo`), so collisions are only checked within
    * the same staticness.
    */
-  private dedupCrossCategory<P extends MemberLike, M extends MemberLike>(
+  public dedupCrossCategory<P extends helpers.MemberLike, M extends helpers.MemberLike>(
     props: P[],
     methods: M[],
     propRubyName: (p: P) => string,
     methodRubyName: (m: M) => string,
     fqn: string,
   ): { props: P[]; methods: M[] } {
-    const buckets = new Map<
-      string,
-      Array<{ member: P | M; isProp: boolean }>
-    >();
-    const add = (member: P | M, isProp: boolean, name: string) => {
-      const key = `${member.static ? 'static' : 'instance'}:${name}`;
-      const bucket = buckets.get(key) ?? [];
-      bucket.push({ member, isProp });
-      buckets.set(key, bucket);
-    };
-    for (const p of props) add(p, true, propRubyName(p));
-    for (const m of methods) add(m, false, methodRubyName(m));
-
-    const dropped = new Set<any>();
-    for (const [key, bucket] of buckets) {
-      if (bucket.length === 1) {
-        continue;
-      }
-      const rubyKey = key.split(':')[1];
-      const nonDeprecated = bucket.filter((e) => !isDeprecated(e.member));
-      if (nonDeprecated.length === 0) {
-        throw new Error(
-          `All members mapping to Ruby name '${rubyKey}' on ${fqn} are ` +
-            `deprecated; cannot pick a winner.  jsii names: ${bucket
-              .map((e) => `'${e.member.name}'`)
-              .join(', ')}`,
-        );
-      }
-      if (nonDeprecated.length > 1) {
-        throw new Error(
-          `A property and a method on ${fqn} both map to Ruby name ` +
-            `'${rubyKey}': ${nonDeprecated
-              .map(
-                (e) => `${e.isProp ? 'property' : 'method'} '${e.member.name}'`,
-              )
-              .join(
-                ', ',
-              )}.  Mark all but one deprecated (or rename) to disambiguate.`,
-        );
-      }
-      for (const e of bucket) {
-        if (e !== nonDeprecated[0]) {
-          dropped.add(e.member);
-        }
-      }
-    }
-
-    return {
-      props: props.filter((p) => !dropped.has(p)),
-      methods: methods.filter((m) => !dropped.has(m)),
-    };
+    return helpers.dedupCrossCategory(props, methods, propRubyName, methodRubyName, fqn);
   }
 
-  private dedupByRubyName<T extends MemberLike>(
+  public dedupByRubyName<T extends helpers.MemberLike>(
     members: readonly T[],
     rubyName: (m: T) => string,
     fqn: string,
   ): T[] {
-    const byName = new Map<string, T[]>();
-    for (const m of members) {
-      const key = rubyName(m);
-      const bucket = byName.get(key) ?? [];
-      bucket.push(m);
-      byName.set(key, bucket);
-    }
-
-    const out: T[] = [];
-    for (const [rubyKey, bucket] of byName) {
-      if (bucket.length === 1) {
-        out.push(bucket[0]);
-        continue;
-      }
-      const nonDeprecated = bucket.filter((m) => !isDeprecated(m));
-      if (nonDeprecated.length === 0) {
-        throw new Error(
-          `All members mapping to Ruby name '${rubyKey}' on ${fqn} are ` +
-            `deprecated; cannot pick a winner.  jsii names: ${bucket
-              .map((m) => `'${m.name}'`)
-              .join(', ')}`,
-        );
-      }
-      if (nonDeprecated.length > 1) {
-        throw new Error(
-          `Multiple non-deprecated members map to Ruby name '${rubyKey}' ` +
-            `on ${fqn}: ${nonDeprecated
-              .map((m) => `'${m.name}'`)
-              .join(
-                ', ',
-              )}.  Mark all but one deprecated (or rename) to disambiguate.`,
-        );
-      }
-      out.push(nonDeprecated[0]);
-    }
-    return out;
+    return helpers.dedupByRubyName(members, rubyName, fqn);
   }
 
   private rubyModuleForAssembly(name: string): string {
@@ -1981,379 +1632,18 @@ export class RubyGenerator extends Generator {
   private assemblyAcronyms(
     config: { targets?: spec.AssemblyTargets } | undefined,
   ): string[] {
-    return (config?.targets?.ruby?.acronyms ?? []).filter(
-      (a: unknown): a is string => typeof a === 'string' && a.length > 0,
-    );
+    return helpers.assemblyAcronyms(config);
   }
 
   private rubyModuleName(name: string, acronyms?: string[]): string {
     // Default to the acronyms of the assembly being generated; callers
     // converting names that belong to a *dependency* pass that assembly's
     // own list (see rubyFullTypeName / rubyModuleForAssembly).
-    acronyms ??= this.assemblyAcronyms(this.assembly);
-
-    // Handle scoped packages: @scope/package -> Scope::Package
-    if (name.startsWith('@')) {
-      const parts = name.slice(1).split('/');
-      return parts.map((p) => this.rubyModuleName(p, acronyms)).join('::');
-    }
-
-    // Handle hyphens: jsii-calc -> JsiiCalc
-    if (name.includes('-')) {
-      const parts = name.split('-');
-      return parts.map((p) => this.rubyModuleName(p, acronyms)).join('');
-    }
-
-    const sanitized = name.replace(/[^a-zA-Z0-9_]/g, '');
-    let pascal =
-      sanitized.charAt(0) === sanitized.charAt(0).toUpperCase()
-        ? sanitized
-        : toPascalCase(sanitized);
-
-    for (const acronym of acronyms) {
-      // Find the acronym case-insensitively. A match is only considered a valid
-      // word boundary if it starts with a capital letter and is followed by either
-      // another capital letter, a digit, an 's' (for plurals), or the end of the string.
-      // The acronym is config-supplied text, not a pattern — escape it.
-      const regex = new RegExp(`(${escapeRegExp(acronym)})`, 'ig');
-      pascal = pascal.replace(regex, (match, _p1, offset) => {
-        if (match[0] !== match[0].toUpperCase()) return match;
-
-        const nextChar = pascal[offset + match.length];
-        if (nextChar) {
-          // Must be uppercase, digit, or 's' followed by uppercase, digit, or end of string
-          const isValid =
-            /^[A-Z0-9]$/.test(nextChar) ||
-            (nextChar === 's' &&
-              (!pascal[offset + match.length + 1] ||
-                /^[A-Z0-9]$/.test(pascal[offset + match.length + 1])));
-          if (!isValid) return match;
-        }
-
-        return acronym;
-      });
-    }
-
-    // Ruby constants must start with an uppercase letter.  npm allows
-    // package names like `3d-tools` (and leading underscores), which would
-    // otherwise produce invalid constants like `3dTools`.  Prefix with `V_`,
-    // mirroring rubyConstName's treatment of digit-leading enum members.
-    if (!/^[A-Z]/.test(pascal)) {
-      pascal = `V_${pascal}`;
-    }
-
-    return pascal;
+    return helpers.rubyModuleName(name, acronyms ?? this.assemblyAcronyms(this.assembly));
   }
 
-  private rubyConstName(name: string): string {
-    const constName = toSnakeCase(name)
-      .toUpperCase()
-      .replace(/[^A-Z0-9_]/g, '_');
-    if (/^[0-9]/.test(constName)) {
-      return `V_${constName}`;
-    }
-    return constName;
-  }
-
-  private async generateGemspec(outdir: string) {
-    const assembly = this.reflectAssembly;
-    const assemblySpec = assembly.spec;
-    const gemName = rubyGemName(assemblySpec);
-    const gemspecPath = path.join(outdir, `${gemName}.gemspec`);
-    await fs.mkdir(outdir, { recursive: true });
-
-    // author, license, description and homepage are all required fields of
-    // a jsii assembly, so they can be emitted unconditionally; guards below
-    // are belt-and-braces for hand-crafted assemblies.
-    const gemspecContent = [
-      `Gem::Specification.new do |s|`,
-      `  s.name        = '${rubySq(gemName)}'`,
-      `  s.version     = '${rubySq(toRubyReleaseVersion(assembly.version))}'`,
-      `  s.summary     = 'Ruby bindings for ${rubySq(assembly.name)}'`,
-    ];
-    if (assemblySpec.description) {
-      gemspecContent.push(
-        `  s.description = '${rubySq(assemblySpec.description)}'`,
-      );
-    }
-    gemspecContent.push(
-      `  s.authors     = ['${rubySq(assemblySpec.author?.name ?? 'JSII Generator')}']`,
-    );
-    if (assemblySpec.license) {
-      gemspecContent.push(
-        `  s.license     = '${rubySq(assemblySpec.license)}'`,
-      );
-    }
-    if (assemblySpec.homepage) {
-      gemspecContent.push(
-        `  s.homepage    = '${rubySq(assemblySpec.homepage)}'`,
-      );
-    }
-    gemspecContent.push(
-      `  s.files       = Dir["lib/**/*"] + Dir["sig/**/*"]`,
-      `  s.required_ruby_version = '>= 3.3.0'`,
-      // The runtime pairing is the PLUGIN's contract, not pacmak's: this
-      // range must accept the jsii-ruby-runtime gem this plugin version was
-      // developed against (runtime/jsii-ruby-runtime.gemspec, in lockstep
-      // with the plugin's own version). Deriving it from pacmak's VERSION
-      // breaks on dev builds of the toolchain, where VERSION is 0.0.0.
-      `  s.add_dependency 'jsii-ruby-runtime', '~> 0.1'`,
-      `  s.add_dependency 'base64', '~> 0.2'`,
-    );
-
-    if (this.assembly.dependencies) {
-      // JSII_RUBY_PIN_DEPENDENCIES=exact pins each dependency gem to the
-      // version actually installed next to the generated package, instead of
-      // translating the npm semver range. Distribution policy for feeds that
-      // publish the whole closure atomically: consumers resolve exactly the
-      // set that was generated and tested together, never a newer dependency
-      // this gem has not seen. Falls back to the translated range when the
-      // dependency is not resolvable from the package root.
-      const pinExact = process.env.JSII_RUBY_PIN_DEPENDENCIES === 'exact';
-      for (const [depName, version] of Object.entries(
-        this.assembly.dependencies,
-      )) {
-        const depInfo = this.assembly.dependencyClosure?.[depName];
-        const depGem = depInfo?.targets?.ruby?.gem as string | undefined;
-        if (depGem) {
-          const pinned = pinExact
-            ? resolveInstalledVersion(depName, this.packageRoot)
-            : undefined;
-          const requirement =
-            pinned !== undefined
-              ? `'= ${rubySq(toRubyReleaseVersion(pinned))}'`
-              : toRubyVersionRange(version);
-          gemspecContent.push(`  s.add_dependency '${rubySq(depGem)}', ${requirement}`);
-        }
-      }
-    }
-
-    gemspecContent.push(`end`);
-
-    await fs.writeFile(gemspecPath, `${gemspecContent.join('\n')}\n`, 'utf-8');
-  }
-
-  /**
-   * Emit `sig/<assembly>.rbs` — RBS type signatures mirroring the generated
-   * Ruby, so Steep/TypeProf users get static checking and editor completion.
-   * Uses fully-qualified declaration headers (`class A::B::C`) with empty
-   * namespace-module predeclarations, which keeps emission order-independent
-   * (RBS resolves a file as a whole).  Names come from the same mappers the
-   * `.rb` emission uses, so signatures line up with the real methods.
-   */
-  private async generateRbs(outdir: string, sortedTypes: reflect.Type[]) {
-    const assembly = this.reflectAssembly;
-    const lines: string[] = [];
-
-    // Ruby paths that are emitted as classes (jsii classes + datatype
-    // interfaces) — we must NOT also predeclare them as namespace modules.
-    const classPaths = new Set<string>();
-    for (const type of sortedTypes) {
-      if (
-        type.isClassType() ||
-        (type.isInterfaceType() && type.spec.datatype)
-      ) {
-        classPaths.add(this.rubyFullTypeName(type.fqn));
-      }
-    }
-
-    // Predeclare every pure-namespace module fragment (every fqn prefix that
-    // isn't itself a class path).
-    const namespaces = new Set<string>();
-    for (const type of sortedTypes) {
-      const parts = this.rubyFullTypeName(type.fqn).split('::');
-      let current = '';
-      for (let i = 0; i < parts.length - 1; i++) {
-        current = current ? `${current}::${parts[i]}` : parts[i];
-        if (!classPaths.has(current)) {
-          namespaces.add(current);
-        }
-      }
-    }
-    for (const ns of Array.from(namespaces).sort(
-      (a, b) => a.split('::').length - b.split('::').length,
-    )) {
-      lines.push(`module ${ns} end`);
-    }
-    if (namespaces.size > 0) {
-      lines.push('');
-    }
-
-    for (const type of sortedTypes) {
-      if (type.isEnumType()) {
-        this.emitRbsEnum(type, lines);
-      } else if (type.isInterfaceType()) {
-        this.emitRbsInterface(type, lines);
-      } else if (type.isClassType()) {
-        this.emitRbsClass(type, lines);
-      }
-    }
-
-    const sigPath = path.join(outdir, 'sig', `${assembly.name}.rbs`);
-    await fs.mkdir(path.dirname(sigPath), { recursive: true });
-    await fs.writeFile(sigPath, `${lines.join('\n')}\n`, 'utf-8');
-  }
-
-  /** RBS parameter list for a callable's parameters. */
-  private rbsParams(params: readonly any[]): string {
-    return params
-      .map((p) => {
-        const name = this.rubyName(p.name);
-        if (p.variadic) {
-          return `*${this.rbsParamTypeBare(this.typeRefSpec(p.type))} ${name}`;
-        }
-        const t = this.rbsParamType(this.typeRefSpec(p.type), p.optional);
-        return p.optional ? `?${t} ${name}` : `${t} ${name}`;
-      })
-      .join(', ');
-  }
-
-  /** RBS return type for a method (`void` when it declares no return). */
-  private rbsReturn(method: any): string {
-    const ret = method.spec?.returns;
-    return ret?.type
-      ? this.rbsType(this.typeRefSpec(ret.type), ret.optional)
-      : 'void';
-  }
-
-  private emitRbsEnum(typeSpec: reflect.EnumType, lines: string[]): void {
-    const members = this.dedupByRubyName(
-      typeSpec.members,
-      (m) => this.rubyConstName(m.name),
-      typeSpec.fqn,
-    );
-    lines.push(`module ${this.rubyFullTypeName(typeSpec.fqn)}`);
-    for (const m of members) {
-      lines.push(`  ${this.rubyConstName(m.name)}: ::Jsii::Enum`);
-    }
-    lines.push('end', '');
-  }
-
-  private emitRbsInterface(
-    typeSpec: reflect.InterfaceType,
-    lines: string[],
-  ): void {
-    const { props, methods } = this.dedupCrossCategory(
-      this.dedupByRubyName(
-        typeSpec.allProperties,
-        (p) => this.rubyName(p.name),
-        typeSpec.fqn,
-      ),
-      this.dedupByRubyName(
-        typeSpec.allMethods,
-        (m) => this.rubyName(m.name),
-        typeSpec.fqn,
-      ),
-      (p) => this.rubyName(p.name),
-      (m) => this.rubyName(m.name),
-      typeSpec.fqn,
-    );
-    const full = this.rubyFullTypeName(typeSpec.fqn);
-
-    if (typeSpec.datatype) {
-      // Struct → value class with a kwargs constructor + readers.
-      const bases = typeSpec.spec.interfaces ?? [];
-      const base =
-        bases.length > 0
-          ? `::${this.rubyFullTypeName(bases[0])}`
-          : '::Jsii::Struct';
-      lines.push(`class ${full} < ${base}`);
-      const kwargs = props
-        .map((p) => {
-          // Constructor kwargs are input positions too: nested struct values
-          // may be given as hashes (coerced at serialization).
-          const t = this.rbsParamType(this.typeRefSpec(p.type), p.optional);
-          return p.optional
-            ? `?${this.rubyName(p.name)}: ${t}`
-            : `${this.rubyName(p.name)}: ${t}`;
-        })
-        .join(', ');
-      lines.push(`  def initialize: (${kwargs}) -> void`);
-      for (const p of props) {
-        lines.push(
-          `  attr_reader ${this.rubyName(p.name)}: ${this.rbsType(this.typeRefSpec(p.type), p.optional)}`,
-        );
-      }
-      lines.push('end', '');
-      return;
-    }
-
-    // Behavioral interface → module of method/property signatures.
-    lines.push(`module ${full}`);
-    for (const p of props) {
-      const t = this.rbsType(this.typeRefSpec(p.type), p.optional);
-      lines.push(`  attr_reader ${this.rubyName(p.name)}: ${t}`);
-      if (!p.immutable) {
-        lines.push(`  attr_writer ${this.rubyName(p.name)}: ${t}`);
-      }
-    }
-    for (const m of methods) {
-      lines.push(
-        `  def ${this.rubyName(m.name)}: (${this.rbsParams(m.parameters)}) -> ${this.rbsReturn(m)}`,
-      );
-    }
-    lines.push('end', '');
-  }
-
-  private emitRbsClass(typeSpec: reflect.ClassType, lines: string[]): void {
-    const { props, methods } = this.dedupCrossCategory(
-      this.dedupByRubyName(
-        typeSpec.allProperties,
-        (p) => this.rubyPropertyName(p),
-        typeSpec.fqn,
-      ),
-      this.dedupByRubyName(
-        typeSpec.allMethods,
-        (m) => this.rubyMethodName(m),
-        typeSpec.fqn,
-      ),
-      (p) => this.rubyPropertyName(p),
-      (m) => this.rubyMethodName(m),
-      typeSpec.fqn,
-    );
-    const full = this.rubyFullTypeName(typeSpec.fqn);
-    const base = typeSpec.spec.base
-      ? `::${this.rubyFullTypeName(typeSpec.spec.base)}`
-      : '::Jsii::Object';
-
-    lines.push(`class ${full} < ${base}`);
-    for (const iface of typeSpec.spec.interfaces ?? []) {
-      lines.push(`  include ::${this.rubyFullTypeName(iface)}`);
-    }
-
-    const init = typeSpec.spec.initializer;
-    if (init && init.parameters && init.parameters.length > 0) {
-      lines.push(
-        `  def initialize: (${this.rbsParams(init.parameters)}) -> void`,
-      );
-    } else if (init) {
-      lines.push('  def initialize: () -> void');
-    }
-
-    for (const p of props) {
-      const t = this.rbsType(this.typeRefSpec(p.type), p.optional);
-      if (p.static) {
-        // Statics (incl. const props) are generated as singleton getter/
-        // setter methods, not Ruby attributes — emit `def self.` sigs.
-        const name = this.rubyPropertyName(p);
-        lines.push(`  def self.${name}: () -> ${t}`);
-        if (!p.immutable) {
-          lines.push(`  def self.${name}=: (${t}) -> ${t}`);
-        }
-        continue;
-      }
-      lines.push(`  attr_reader ${this.rubyName(p.name)}: ${t}`);
-      if (!p.immutable) {
-        lines.push(`  attr_writer ${this.rubyName(p.name)}: ${t}`);
-      }
-    }
-    for (const m of methods) {
-      const recv = m.static ? 'self.' : '';
-      lines.push(
-        `  def ${recv}${this.rubyMethodName(m)}: (${this.rbsParams(m.parameters)}) -> ${this.rbsReturn(m)}`,
-      );
-    }
-    lines.push('end', '');
+  public rubyConstName(name: string): string {
+    return helpers.rubyConstName(name);
   }
 
   protected getAssemblyOutputDir(_mod: spec.Assembly) {

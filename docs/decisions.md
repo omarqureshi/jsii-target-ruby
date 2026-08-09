@@ -35,8 +35,9 @@ overlay — harvested from the original fork-era `.jsiirc` decisions — and
 adds a submodule with no recorded decision. Nested submodules derive from
 their parent.
 
-Enforced in: `src/ruby.ts` (`rubyModuleName`, `assemblyAcronyms`,
-`rubyFullTypeName`), `test/ruby-names.test.ts`, `scripts/check-cdk-naming.js`.
+Enforced in: `src/helpers.ts` (`rubyModuleName`, `assemblyAcronyms`),
+`src/ruby.ts` (`rubyFullTypeName`), `test/ruby-names.test.ts`,
+`scripts/check-cdk-naming.js`.
 
 ## Member names
 
@@ -61,7 +62,7 @@ generation fails loudly (`cannot pick a winner`) rather than shipping an
 ambiguous API. The runtime's `RUBY_RESERVED_NAMES` and the generator's are
 asserted identical by a compliance spec that reads this repo's source.
 
-Enforced in: `src/ruby.ts` (`rubyName`, `dedupCrossCategory`),
+Enforced in: `src/helpers.ts` (`rubyName`, `dedupCrossCategory`),
 `test/ruby-names.test.ts`, `compliance/spec/unit/utils_spec.rb`.
 
 ## Structs
@@ -121,7 +122,7 @@ plugin's version — so runtime patch releases don't force regenerating the
 closure.
 
 Enforced in: `src/version-utils.ts`, `test/version-utils.test.ts`,
-`src/ruby.ts` (gemspec emission).
+`src/gemspec.ts`.
 
 ## Callback ergonomics
 

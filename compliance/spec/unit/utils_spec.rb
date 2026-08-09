@@ -167,7 +167,7 @@ RSpec.describe Jsii::Utils do
 
   describe 'RUBY_RESERVED_NAMES' do
     it 'is consistent with jsii-pacmak' do
-      pacmak_ruby_ts = File.expand_path('../../../src/ruby.ts', __dir__)
+      pacmak_ruby_ts = File.expand_path('../../../src/helpers.ts', __dir__)
       expect(File.exist?(pacmak_ruby_ts)).to be(true), "Expected #{pacmak_ruby_ts} to exist"
 
       content = File.read(pacmak_ruby_ts)
