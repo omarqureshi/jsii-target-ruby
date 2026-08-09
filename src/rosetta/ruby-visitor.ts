@@ -136,11 +136,6 @@ export function guessRubyModuleName(fqn: string): string {
 }
 
 /**
- * Recursively resolves the fully-qualified Ruby name of a TS module, class, or type.
- * Inspects the associated JSII assembly target metadata for explicit module configuration
- * (e.g. `ruby.module`) and package-specific acronyms to output accurate namespaces.
- */
-/**
  * The Ruby name for whatever jsii declaration a node resolves to, when it
  * resolves to one at all. Nodes that are not jsii symbols (locals, imports
  * from elsewhere) return undefined so the caller can fall back to its own
@@ -153,6 +148,11 @@ function rubyNameOf(context: RubyVisitorContext, node: ts.Node): OTree | undefin
   return rubyName ? new OTree([rubyName]) : undefined;
 }
 
+/**
+ * Recursively resolves the fully-qualified Ruby name of a TS module, class, or type.
+ * Inspects the associated JSII assembly target metadata for explicit module configuration
+ * (e.g. `ruby.module`) and package-specific acronyms to output accurate namespaces.
+ */
 function findRubyName(jsiiSymbol: JsiiSymbol): string | undefined {
   if (!jsiiSymbol.sourceAssembly?.assembly) {
     // Don't have accurate info, just guess from the FQN
