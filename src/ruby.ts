@@ -279,6 +279,37 @@ export class RubyGenerator extends Generator {
    * `@see` / `@example` tags as applicable.  Silently emits nothing when
    * there are no docs and no tags to write.
    */
+  /**
+   * Docs for a property getter: its summary plus an `@return` of the
+   * property's own type.
+   */
+  private emitPropertyDocs(
+    prop: { name: string; type: RubyTypeRef; optional?: boolean },
+    fqn: string,
+  ): void {
+    this.emitDocs(prop, {
+      propertyType: prop.type,
+      propertyOptional: prop.optional,
+      apiLocation: { api: 'member', fqn, memberName: prop.name },
+    });
+  }
+
+  /**
+   * Docs for a method: its summary, an `@param` per parameter and an
+   * `@return` (`[void]` when the method declares no return type).
+   */
+  private emitMethodDocs(
+    method: { name: string; parameters: readonly ParamLike[]; spec?: { returns?: spec.OptionalValue } },
+    fqn: string,
+  ): void {
+    this.emitDocs(method, {
+      params: method.parameters,
+      returns: method.spec?.returns,
+      isMethod: true,
+      apiLocation: { api: 'member', fqn, memberName: method.name },
+    });
+  }
+
   private emitDocs(
     docsSource: unknown,
     opts: {
@@ -749,15 +780,7 @@ export class RubyGenerator extends Generator {
       this.code.line('');
 
       for (const prop of props) {
-        this.emitDocs(prop, {
-          propertyType: prop.type,
-          propertyOptional: prop.optional,
-          apiLocation: {
-            api: 'member',
-            fqn: typeSpec.fqn,
-            memberName: prop.name,
-          },
-        });
+        this.emitPropertyDocs(prop, typeSpec.fqn);
         this.code.line(`attr_reader :${helpers.rubyName(prop.name)}`);
       }
       this.code.line('');
@@ -790,15 +813,7 @@ export class RubyGenerator extends Generator {
     } else {
       for (const prop of resolvedAllProperties) {
         const propRubyName = helpers.rubyName(prop.name);
-        this.emitDocs(prop, {
-          propertyType: prop.type,
-          propertyOptional: prop.optional,
-          apiLocation: {
-            api: 'member',
-            fqn: typeSpec.fqn,
-            memberName: prop.name,
-          },
-        });
+        this.emitPropertyDocs(prop, typeSpec.fqn);
         this.code.open(`def ${propRubyName}()`);
         this.code.line(`jsii_get_property("${rubyDq(prop.name)}")`);
         this.code.close(`end`);
@@ -818,16 +833,7 @@ export class RubyGenerator extends Generator {
       for (const method of resolvedAllMethods) {
         const sigParams = helpers.rubySignatureParams(method.parameters);
         const callParams = helpers.rubyCallParams(method.parameters);
-        this.emitDocs(method, {
-          params: method.parameters,
-          returns: method.spec?.returns,
-          isMethod: true,
-          apiLocation: {
-            api: 'member',
-            fqn: typeSpec.fqn,
-            memberName: method.name,
-          },
-        });
+        this.emitMethodDocs(method, typeSpec.fqn);
         this.code.open(`def ${helpers.rubyName(method.name)}(${sigParams})`);
         for (const p of method.parameters) {
           const rubyParam = helpers.rubyName(p.name);
@@ -1040,16 +1046,7 @@ export class RubyGenerator extends Generator {
 
       const callParams = helpers.rubyCallParams(method.parameters);
 
-      this.emitDocs(method, {
-        params: method.parameters,
-        returns: method.spec?.returns,
-        isMethod: true,
-        apiLocation: {
-          api: 'member',
-          fqn: typeSpec.fqn,
-          memberName: method.name,
-        },
-      });
+      this.emitMethodDocs(method, typeSpec.fqn);
       this.code.open(`def self.${this.rubyMethodName(method)}(${sigParams})`);
       for (const p of method.parameters) {
         const rubyParam = helpers.rubyName(p.name);
@@ -1074,15 +1071,7 @@ export class RubyGenerator extends Generator {
       const rubyName = this.rubyPropertyName(prop);
 
       if (prop.static) {
-        this.emitDocs(prop, {
-          propertyType: prop.type,
-          propertyOptional: prop.optional,
-          apiLocation: {
-            api: 'member',
-            fqn: typeSpec.fqn,
-            memberName: prop.name,
-          },
-        });
+        this.emitPropertyDocs(prop, typeSpec.fqn);
         this.code.open(`def self.${rubyName}()`);
         this.code.line(
           `Jsii::Kernel.instance.get_static("${rubyDq(typeSpec.fqn)}", "${rubyDq(prop.name)}")`,
@@ -1103,15 +1092,7 @@ export class RubyGenerator extends Generator {
           this.code.line('');
         }
       } else {
-        this.emitDocs(prop, {
-          propertyType: prop.type,
-          propertyOptional: prop.optional,
-          apiLocation: {
-            api: 'member',
-            fqn: typeSpec.fqn,
-            memberName: prop.name,
-          },
-        });
+        this.emitPropertyDocs(prop, typeSpec.fqn);
         this.code.open(`def ${rubyName}()`);
         this.code.line(`jsii_get_property("${rubyDq(prop.name)}")`);
         this.code.close(`end`);
@@ -1137,16 +1118,7 @@ export class RubyGenerator extends Generator {
 
       const callParams = helpers.rubyCallParams(method.parameters);
 
-      this.emitDocs(method, {
-        params: method.parameters,
-        returns: method.spec?.returns,
-        isMethod: true,
-        apiLocation: {
-          api: 'member',
-          fqn: typeSpec.fqn,
-          memberName: method.name,
-        },
-      });
+      this.emitMethodDocs(method, typeSpec.fqn);
       this.code.open(`def ${this.rubyMethodName(method)}(${sigParams})`);
       for (const p of method.parameters) {
         const rubyParam = helpers.rubyName(p.name);

@@ -1,0 +1,106 @@
+{
+  "author": {
+    "email": "test@example.com",
+    "name": "Test",
+    "organization": false,
+    "roles": ["owner"]
+  },
+  "description": "Synthetic assembly: documented members in all four positions (instance/static x property/method)",
+  "fingerprint": "PHONY",
+  "homepage": "https://example.com",
+  "jsiiVersion": "0.0.0-dev",
+  "license": "Apache-2.0",
+  "name": "documented_members",
+  "repository": {
+    "type": "git",
+    "url": "https://example.com/repo"
+  },
+  "schema": "jsii/0.10.0",
+  "targets": {
+    "ruby": {
+      "gem": "documented-members",
+      "module": "DocumentedMembers"
+    }
+  },
+  "version": "1.0.0",
+  "types": {
+    "documented_members.Widget": {
+      "assembly": "documented_members",
+      "fqn": "documented_members.Widget",
+      "kind": "class",
+      "name": "Widget",
+      "initializer": {
+        "locationInModule": { "filename": "index.ts", "line": 5 },
+        "parameters": [
+          {
+            "name": "label",
+            "type": { "primitive": "string" },
+            "docs": { "summary": "The label to show." }
+          }
+        ],
+        "docs": { "summary": "Builds a widget." }
+      },
+      "properties": [
+        {
+          "locationInModule": { "filename": "index.ts", "line": 10 },
+          "name": "instanceProp",
+          "type": { "primitive": "string" },
+          "immutable": true,
+          "docs": { "summary": "An instance property.", "stability": "stable" }
+        },
+        {
+          "locationInModule": { "filename": "index.ts", "line": 14 },
+          "name": "optionalProp",
+          "type": { "primitive": "number" },
+          "immutable": true,
+          "optional": true,
+          "docs": { "summary": "An optional instance property." }
+        },
+        {
+          "locationInModule": { "filename": "index.ts", "line": 18 },
+          "name": "staticProp",
+          "type": { "primitive": "boolean" },
+          "immutable": true,
+          "static": true,
+          "docs": { "summary": "A static property." }
+        }
+      ],
+      "methods": [
+        {
+          "locationInModule": { "filename": "index.ts", "line": 22 },
+          "name": "instanceMethod",
+          "parameters": [
+            {
+              "name": "howMany",
+              "type": { "primitive": "number" },
+              "docs": { "summary": "How many to make." }
+            }
+          ],
+          "returns": { "type": { "primitive": "string" } },
+          "docs": { "summary": "Does an instance thing." }
+        },
+        {
+          "locationInModule": { "filename": "index.ts", "line": 27 },
+          "name": "voidMethod",
+          "parameters": [],
+          "docs": { "summary": "Returns nothing at all." }
+        },
+        {
+          "locationInModule": { "filename": "index.ts", "line": 31 },
+          "name": "staticMethod",
+          "static": true,
+          "parameters": [
+            {
+              "name": "seedValue",
+              "type": { "primitive": "string" },
+              "docs": { "summary": "Where to start from." }
+            }
+          ],
+          "returns": { "type": { "fqn": "documented_members.Widget" } },
+          "docs": { "summary": "Does a static thing." }
+        }
+      ],
+      "docs": { "stability": "stable", "summary": "A documented widget." }
+    }
+  }
+}

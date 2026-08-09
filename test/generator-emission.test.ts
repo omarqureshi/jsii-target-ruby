@@ -31,6 +31,7 @@ const FIXTURE = path.resolve(
 async function generateFixture(
   file: string,
   mode: 'verbatim' | 'translate' = 'verbatim',
+  fixture: string = FIXTURE,
 ): Promise<string> {
   // Loading the plugin entry point registers the visitor with rosetta.
   require('../src/index');
@@ -42,8 +43,8 @@ async function generateFixture(
   });
 
   const typeSystem = new TypeSystem();
-  const assembly = await typeSystem.load(FIXTURE);
-  rosetta.addAssembly(assembly.spec, path.dirname(FIXTURE));
+  const assembly = await typeSystem.load(fixture);
+  rosetta.addAssembly(assembly.spec, path.dirname(fixture));
 
   const generator = new RubyGenerator(rosetta, {
     targetName: 'ruby',
@@ -60,7 +61,7 @@ async function generateFixture(
   const tarball = path.join(outdir, 'assembly.tgz');
   fs.writeFileSync(tarball, '');
   await generator.save(outdir, tarball, { license: 'Apache-2.0', notice: '' });
-  return fs.readFileSync(path.join(outdir, 'lib', 'variadic_struct', file), 'utf-8');
+  return fs.readFileSync(path.join(outdir, 'lib', assembly.name, file), 'utf-8');
 }
 
 describe('generator emission', () => {
@@ -163,5 +164,77 @@ describe('rosetta example translation', () => {
     const example = source.slice(source.indexOf('@example'), source.indexOf('def initialize'));
     assert.ok(!/\bconst\b/.test(example), `TypeScript 'const' survived:\n${example}`);
     assert.ok(!/;\s*$/m.test(example.replace(/^\s*#\s?/gm, '')), 'trailing semicolons survived');
+  });
+});
+
+
+// The four member-doc emission sites (instance/static x property/method) each
+// built the same `@param`/`@return` block by hand. These pin what each one
+// renders, so unifying them cannot quietly drop a tag from one position.
+describe('generator emission: member documentation', () => {
+  const DOCUMENTED = path.resolve(
+    __dirname,
+    '..',
+    '..',
+    'test',
+    'fixtures',
+    'documented-members.jsii.json',
+  );
+
+  let widget: string;
+
+  before(async () => {
+    widget = await generateFixture('widget.rb', 'verbatim', DOCUMENTED);
+  });
+
+  /** The emitted source for one member definition, docs included. */
+  function member(def: string): string {
+    const at = widget.indexOf(def);
+    assert.notEqual(at, -1, `no ${def} in:\n${widget}`);
+    const before = widget.slice(0, at);
+    // Walk back to the start of this member's comment block.
+    const lines = before.split('\n');
+    let start = lines.length - 1;
+    while (start > 0 && /^\s*(#|$)/.test(lines[start - 1])) start--;
+    return [...lines.slice(start), widget.slice(at).split('\n')[0]].join('\n');
+  }
+
+  test('instance property renders summary and @return of its type', () => {
+    const prop = member('def instance_prop(');
+    assert.match(prop, /# An instance property\./);
+    assert.match(prop, /# @return \[String\]/);
+  });
+
+  test('optional instance property renders a nilable @return', () => {
+    const prop = member('def optional_prop(');
+    assert.match(prop, /# @return \[Numeric, nil\]/);
+  });
+
+  test('static property renders summary and @return of its type', () => {
+    const prop = member('def self.static_prop');
+    assert.match(prop, /# A static property\./);
+    assert.match(prop, /# @return \[Boolean\]/);
+  });
+
+  test('instance method renders @param per parameter and @return', () => {
+    const meth = member('def instance_method(');
+    assert.match(meth, /# Does an instance thing\./);
+    assert.match(meth, /# @param how_many \[Numeric\] How many to make\./);
+    assert.match(meth, /# @return \[String\]/);
+  });
+
+  test('a method with no declared return renders @return [void]', () => {
+    assert.match(member('def void_method('), /# @return \[void\]/);
+  });
+
+  test('static method renders @param per parameter and @return', () => {
+    const meth = member('def self.static_method(');
+    assert.match(meth, /# Does a static thing\./);
+    assert.match(meth, /# @param seed_value \[String\] Where to start from\./);
+    assert.match(meth, /# @return \[DocumentedMembers::Widget\]/);
+  });
+
+  test('constructor renders @param per parameter', () => {
+    assert.match(member('def initialize('), /# @param label \[String\] The label to show\./);
   });
 });
