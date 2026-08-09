@@ -3,6 +3,15 @@
 module Jsii
   # Base exception class for all errors generated natively by the Ruby JSII runtime wrapper.
   class Error < StandardError
+    # The error text WITHOUT any decoration subclasses add in #to_s
+    # (e.g. {RuntimeError}'s appended remote stack).  Subclasses that
+    # decorate #to_s must set @raw_message.
+    #
+    # @return [String]
+    def raw_message
+      @raw_message || message
+    end
+
     # Heuristic: does this error's message indicate that a property / method
     # member was not found on the underlying JSII object?  Used by the
     # dynamic-dispatch path to decide whether to fall through to Ruby's
@@ -10,7 +19,11 @@ module Jsii
     #
     # @return [Boolean] `true` if the message matches a known "missing member" phrase.
     def missing_member?
-      msg = message
+      # raw_message, not message: RuntimeError#to_s appends the remote JS
+      # stack, so matching against `message` misclassifies any remote failure
+      # whose *stack* happens to contain one of these phrases as a missing
+      # member — discarding the real error behind a NoMethodError.
+      msg = raw_message
       msg.include?('not a property') ||
         msg.include?("doesn't have a property") ||
         msg.include?('does not exist') ||
@@ -36,6 +49,7 @@ module Jsii
     # @return [RuntimeError] a new error preserving the remote stack.
     def initialize(msg, stack = nil)
       super(msg)
+      @raw_message = msg.to_s
       @stack = stack
     end
 

@@ -17,6 +17,18 @@ import { RubyVisitor } from '../src/rosetta/ruby-visitor';
 // mirroring the corpus' relative layout under test/translations/.
 const EXPECTATIONS = path.resolve(__dirname, '..', '..', 'test', 'translations');
 
+// The visitor resolves unresolvable type references against the target-config
+// overlay (as the docs pipeline does in production) — run the corpus the same
+// way so namespaces in expectations match deployed behavior. Scoped with
+// before/after like rosetta-names.test.ts, so nothing leaks in a
+// shared-process runner.
+before(() => {
+  process.env.JSII_RUBY_TARGET_CONFIG = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+});
+after(() => {
+  delete process.env.JSII_RUBY_TARGET_CONFIG;
+});
+
 // Snippets not (yet) in the upstream corpus: full .ts + .rb pairs, candidates
 // for upstreaming. Expectations sit next to the snippets.
 const LOCAL_CORPUS = path.resolve(__dirname, '..', '..', 'test', 'translations-local');
@@ -32,9 +44,11 @@ const LOCAL_CORPUS = path.resolve(__dirname, '..', '..', 'test', 'translations-l
 //    on error symbols that have no declarations — property accesses through an
 //    unresolvable module either crash outright (class_with_namespace) or
 //    derail submodule detection (submodule-import's `require_relative` line).
+// Gaps retired as upstream fixes land: classes/class_with_namespace was
+// fixed by guarding the declaration-less symbol in submodule-reference
+// (jsii-rosetta), which stopped isLikelyNamespace from crashing.
 const KNOWN_RENDER_GAPS = new Set<string>([
   'imports/submodule-import', // (2)
-  'classes/class_with_namespace', // (2) — crashes stock rosetta
   'expressions/increment_decrement', // (1)
   'expressions/ternary', // (1)
 ]);

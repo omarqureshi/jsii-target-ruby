@@ -53,5 +53,16 @@ module Jsii
     def ==(other)
       other.is_a?(Jsii::Enum) && other.fqn == @fqn && other.value == @value
     end
+
+    # Hash/Set membership uses eql? + hash, not ==.  Enum constants are fresh
+    # instances (one per generated constant) and every kernel response
+    # deserializes a NEW instance, so without these an enum returned from the
+    # kernel never matches the constant as a Hash key or Set member.
+    alias eql? ==
+
+    # @return [Integer] identical for equal enum values.
+    def hash
+      [self.class, @fqn, @value].hash
+    end
   end
 end

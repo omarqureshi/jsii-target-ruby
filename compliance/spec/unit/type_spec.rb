@@ -60,3 +60,90 @@ RSpec.describe Jsii::Type do
     end
   end
 end
+
+RSpec.describe 'Jsii::Struct hash-style reads' do
+  # Rosetta renders struct-typed property reads as `s[:member]`, which is also
+  # how a Ruby user writes them when the value is still a hash literal. A
+  # struct that crossed the kernel boundary is a hydrated Jsii::Struct, so it
+  # has to answer the same form — otherwise translated examples raise
+  # NoMethodError on values returned by the library.
+  let(:struct) { JsiiCalc::StructA.new(required_string: 'hello', optional_number: 42) }
+
+  it 'reads a member by symbol' do
+    expect(struct[:required_string]).to eq('hello')
+    expect(struct[:optional_number]).to eq(42)
+  end
+
+  it 'reads a member by string' do
+    expect(struct['required_string']).to eq('hello')
+  end
+
+  it 'returns nil for an unset optional member' do
+    expect(struct[:optional_string]).to be_nil
+  end
+
+  it 'raises for a member the struct does not have' do
+    expect { struct[:nope] }.to raise_error(NameError, /nope/)
+  end
+end
+
+RSpec.describe 'Jsii::Object.registered_class? performance' do
+  # Called once per overridable member per object construction. A linear
+  # Hash#value? scan over the fqn->class registry (thousands of entries for
+  # aws-cdk-lib) made construction cost grow with library size.
+  # Hold the hash itself, not the accessor: the example below asserts that
+  # `registry` is never called, and that expectation is still armed while the
+  # cleanup hook runs.
+  before { @registry = Jsii::Object.registry }
+
+  after do
+    # The registry is process-global; don't leave synthetic entries behind for
+    # the rest of the suite.
+    @registry.delete_if { |fqn, _| fqn.start_with?('perf.') }
+  end
+
+  it 'answers from the reverse index without consulting the registry' do
+    # What "constant-time" actually means here, stated without a stopwatch: a
+    # lookup never touches the fqn->class map, so its cost cannot grow with
+    # the library. This replaced a 0.2s wall-clock budget for 20k lookups —
+    # about what 20k lookups cost, so it passed only on a quiet machine.
+    # Restoring the Hash#value? scan turns this red immediately.
+    fake = Array.new(3000) { |i| [Class.new, "perf.Type#{i}"] }
+    fake.each { |klass, fqn| Jsii::Object.register_jsii_fqn(fqn, klass) }
+
+    needle = Class.new # never registered: the worst case for a linear scan
+    expect(Jsii::Object).not_to receive(:registry)
+    expect(Jsii::Object.registered_class?(needle)).to be(false)
+  end
+
+  it 'answers the same regardless of receiver' do
+    # registered_class? is called as `ruby_class.registered_class?(owner)`, so
+    # the receiver is whatever generated class is being inspected. A reverse
+    # index memoized per receiver reports every generated class as
+    # unregistered, which makes every generated method look like a user
+    # override and floods the kernel with callbacks.
+    klass = Class.new
+    Jsii::Object.register_jsii_fqn('perf.ReceiverCheck', klass)
+
+    expect(Jsii::Object.registered_class?(klass)).to be(true)
+    expect(JsiiCalc::Calculator.registered_class?(klass)).to be(true)
+    expect(Class.new(Jsii::Object).registered_class?(klass)).to be(true)
+  end
+
+  it 'still answers correctly' do
+    klass = Class.new
+    expect(Jsii::Object.registered_class?(klass)).to be(false)
+    Jsii::Object.register_jsii_fqn('perf.Registered', klass)
+    expect(Jsii::Object.registered_class?(klass)).to be(true)
+  end
+
+  it 'stops reporting a class that was replaced for its fqn' do
+    old_klass = Class.new
+    new_klass = Class.new
+    Jsii::Object.register_jsii_fqn('perf.Replaced', old_klass)
+    Jsii::Object.register_jsii_fqn('perf.Replaced', new_klass)
+
+    expect(Jsii::Object.registered_class?(new_klass)).to be(true)
+    expect(Jsii::Object.registered_class?(old_klass)).to be(false)
+  end
+end

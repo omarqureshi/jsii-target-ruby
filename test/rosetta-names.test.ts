@@ -1,7 +1,8 @@
 import * as assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import * as path from 'node:path';
+import { after, before, describe, test } from 'node:test';
 
-import { guessRubyModuleName, rubyModuleName, toSnakeCase } from '../src/rosetta/ruby-visitor';
+import { findRubyName, guessRubyModuleName, rubyModuleName, toSnakeCase } from '../src/rosetta/ruby-visitor';
 
 describe('toSnakeCase', () => {
   const cases: Array<[string, string]> = [
@@ -90,16 +91,25 @@ describe('rubyModuleName', () => {
 });
 
 describe('guessRubyModuleName', () => {
+  // Unresolved references resolve against the target-config overlay — the
+  // same naming data generation uses. The CDK names below come from
+  // config/cdk-targets.json, not from code.
+  const OVERLAY = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+  before(() => {
+    process.env.JSII_RUBY_TARGET_CONFIG = OVERLAY;
+  });
+  after(() => {
+    delete process.env.JSII_RUBY_TARGET_CONFIG;
+  });
+
   const cases: Array<[string, string]> = [
-    // The core CDK library's explicit .jsiirc.json naming is mirrored: AWSCDK root,
-    // redundant service-level `aws` prefix dropped from submodules.
     ['aws-cdk-lib', 'AWSCDK'],
     ['aws-cdk-lib.aws_s3', 'AWSCDK::S3'],
-    // Without an assembly there is no acronym config, so multi-letter service
-    // names get plain PascalCase — an honest guess, not fake authority.
-    ['aws-cdk-lib.aws_ec2', 'AWSCDK::Ec2'],
+    // The overlay knows the real casing — the old hardcoded guess said Ec2.
+    ['aws-cdk-lib.aws_ec2', 'AWSCDK::EC2'],
     ['aws-cdk-lib.pipelines', 'AWSCDK::Pipelines'],
-    // Non-CDK assemblies follow the default naming rules, with submodules nested via `::`.
+    // Assemblies without an overlay entry derive generically, with
+    // submodules nested via `::`.
     ['jsii-calc', 'JsiiCalc'],
     ['jsii-calc.submodule', 'JsiiCalc::Submodule'],
   ];
@@ -108,4 +118,63 @@ describe('guessRubyModuleName', () => {
       assert.equal(guessRubyModuleName(input), expected);
     });
   }
+});
+
+describe('findRubyName', () => {
+  // The path taken when rosetta HAS assembly metadata for a symbol. The
+  // published aws-cdk-lib assembly carries no `targets.ruby` — that is exactly
+  // what the overlay supplies — so reading only the assembly's own targets
+  // drops the root module and emits examples that raise NameError when pasted.
+  const OVERLAY = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+  before(() => {
+    process.env.JSII_RUBY_TARGET_CONFIG = OVERLAY;
+  });
+  after(() => {
+    delete process.env.JSII_RUBY_TARGET_CONFIG;
+  });
+
+  /** A symbol as rosetta hands it over, for an assembly with no ruby target. */
+  function symbolFor(fqn: string, submodules: string[] = []): any {
+    return {
+      fqn,
+      symbolType: 'class',
+      sourceAssembly: {
+        assembly: {
+          name: fqn.split('.')[0],
+          submodules: Object.fromEntries(submodules.map((s) => [s, {}])),
+        },
+      },
+    };
+  }
+
+  test('qualifies a submodule type with the overlay root module', () => {
+    assert.equal(
+      findRubyName(symbolFor('aws-cdk-lib.aws_s3.Bucket', ['aws-cdk-lib.aws_s3'])),
+      'AWSCDK::S3::Bucket',
+    );
+  });
+
+  test('uses the overlay acronym casing, not a generic derivation', () => {
+    // Acronym restoration applies to the type name too: the generator emits
+    // `class AWSCDK::EC2::VPC`, so an example naming `Vpc` would reference a
+    // constant that does not exist.
+    assert.equal(
+      findRubyName(symbolFor('aws-cdk-lib.aws_ec2.Vpc', ['aws-cdk-lib.aws_ec2'])),
+      'AWSCDK::EC2::VPC',
+    );
+  });
+
+  test('qualifies a root type too', () => {
+    assert.equal(findRubyName(symbolFor('aws-cdk-lib.Stack')), 'AWSCDK::Stack');
+  });
+
+  test("uses the assembly's own ruby target when the overlay has no entry", () => {
+    const sym = symbolFor('my-lib.Thing');
+    sym.sourceAssembly.assembly.targets = { ruby: { module: 'MyLib' } };
+    assert.equal(findRubyName(sym), 'MyLib::Thing');
+  });
+
+  test('an assembly with neither overlay nor target derives generically', () => {
+    assert.equal(findRubyName(symbolFor('jsii-calc.Calculator')), 'JsiiCalc::Calculator');
+  });
 });

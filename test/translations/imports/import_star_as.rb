@@ -1,2 +1,2 @@
 require 'scope-some-module'
-Mod::ClassFromModule.new
+Scope::SomeModule::ClassFromModule.new

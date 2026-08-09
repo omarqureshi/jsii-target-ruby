@@ -167,7 +167,7 @@ RSpec.describe Jsii::Utils do
 
   describe 'RUBY_RESERVED_NAMES' do
     it 'is consistent with jsii-pacmak' do
-      pacmak_ruby_ts = File.expand_path('../../../src/ruby.ts', __dir__)
+      pacmak_ruby_ts = File.expand_path('../../../src/helpers.ts', __dir__)
       expect(File.exist?(pacmak_ruby_ts)).to be(true), "Expected #{pacmak_ruby_ts} to exist"
 
       content = File.read(pacmak_ruby_ts)
@@ -178,4 +178,61 @@ RSpec.describe Jsii::Utils do
       expect(Jsii::Utils::RUBY_RESERVED_NAMES).to eq(pacmak_names)
     end
   end
+  describe 'Jsii::Utils.underscore — generator parity for common abbreviations' do
+    # codemaker's toSnakeCase folds KiB/MiB/GiB before decamelizing, so the
+    # generator emits `memory_limit_mib`. When this mapper disagreed
+    # (`memory_limit_mi_b`), kernel callbacks dispatched to a method that was
+    # never generated and the synth aborted with NoMethodError.
+    {
+      'memoryLimitMiB' => 'memory_limit_mib',
+      'sizeInGiB' => 'size_in_gib',
+      'volumeSizeKiB' => 'volume_size_kib',
+      # Unrelated casing must be unaffected.
+      'enforceSSL' => 'enforce_ssl',
+      'myVPCId' => 'my_vpc_id',
+      'x509Certificate' => 'x509_certificate',
+      'parseJSON' => 'parse_json'
+    }.each do |input, expected|
+      it "maps #{input} to #{expected}" do
+        expect(Jsii::Utils.underscore(input)).to eq(expected)
+      end
+    end
+  end
+
+  describe 'Jsii::Utils.jsii_member_name — inverse of ruby_member_name' do
+    # camelize consumed the generator's leading-underscore escape and upcased
+    # the next letter, so `_next` was dispatched to the kernel as `Next` and
+    # reported as a missing member.
+    %w[next send class end retry].each do |reserved|
+      it "round-trips the escaped reserved word #{reserved}" do
+        ruby = Jsii::Utils.ruby_member_name(reserved)
+        expect(ruby).to eq("_#{reserved}")
+        expect(Jsii::Utils.jsii_member_name(ruby)).to eq(reserved)
+      end
+    end
+
+    it 'round-trips the reserved jsii_ namespace' do
+      ruby = Jsii::Utils.ruby_member_name('jsiiRef')
+      expect(ruby).to eq('_jsii_ref')
+      expect(Jsii::Utils.jsii_member_name(ruby)).to eq('jsiiRef')
+    end
+
+    it 'round-trips digit-leading members' do
+      ruby = Jsii::Utils.ruby_member_name('2fa')
+      expect(ruby).to eq('_2fa')
+      expect(Jsii::Utils.jsii_member_name(ruby)).to eq('2fa')
+    end
+
+    it 'round-trips ordinary members' do
+      expect(Jsii::Utils.jsii_member_name('bucket_arn')).to eq('bucketArn')
+      expect(Jsii::Utils.jsii_member_name(Jsii::Utils.ruby_member_name('memoryLimitMiB'))).to eq('memoryLimitMib')
+    end
+
+    it 'leaves a leading underscore alone when it is not an escape' do
+      # `_foo` is not a reserved word / jsii_ / digit-leading name, so the
+      # underscore is part of the member name, not the generator's marker.
+      expect(Jsii::Utils.camelize('_foo_bar')).to eq('_fooBar')
+    end
+  end
+
 end

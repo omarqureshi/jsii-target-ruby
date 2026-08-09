@@ -101,8 +101,37 @@ module Jsii
         MONITOR.synchronize do
           klass.extend(Jsii::FqnExtension) if klass.is_a?(Module) && !klass.respond_to?(:jsii_fqn=)
           klass.jsii_fqn = fqn if klass.respond_to?(:jsii_fqn=)
+
+          # Maintain the reverse index alongside the map: registered_class?
+          # is called once per overridable member per object construction, and
+          # a Hash#value? scan over a registry the size of aws-cdk-lib made
+          # that cost grow with the library. Reference-counted so a class
+          # displaced from its fqn stops being reported as registered.
+          previous = Jsii::Object.registry[fqn]
+          counts = Jsii::Object.registered_class_counts
+          if previous && !previous.equal?(klass)
+            remaining = (counts[previous] -= 1)
+            counts.delete(previous) if remaining <= 0
+          end
+          counts[klass] += 1 unless previous.equal?(klass)
+
           Jsii::Object.registry[fqn] = klass
         end
+      end
+
+      # Reverse index of {registry}: registered class => number of fqns
+      # mapping to it.
+      #
+      # Always qualified through Jsii::Object, like {registry} itself:
+      # `registered_class?` is invoked as `ruby_class.registered_class?(...)`,
+      # so an unqualified ivar would memoize a fresh empty hash per receiver
+      # and report every generated class as unregistered — which makes every
+      # generated method look like a user override.
+      #
+      # @api private
+      # @return [Hash{Module=>Integer}]
+      def registered_class_counts
+        MONITOR.synchronize { Jsii::Object.instance_variable_get(:@registered_class_counts) || Jsii::Object.instance_variable_set(:@registered_class_counts, Hash.new(0)) }
       end
 
       # @return [Hash{String=>String}] process-wide map from JSII fqn to the
@@ -161,7 +190,7 @@ module Jsii
       # @param klass [Class, Module] the Ruby type to test.
       # @return [Boolean] `true` if it appears in the registry.
       def registered_class?(klass)
-        MONITOR.synchronize { Jsii::Object.registry.value?(klass) }
+        Jsii::Object.registered_class_counts.key?(klass)
       end
 
       # Look up a live proxy by its `$jsii.byref` handle (a raw string or a

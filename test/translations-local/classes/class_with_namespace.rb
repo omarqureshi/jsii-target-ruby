@@ -1,3 +1,3 @@
 require 'aws-cdk-lib'
-class MyClass < Cdk::Construct
+class MyClass < AWSCDK::Construct
 end

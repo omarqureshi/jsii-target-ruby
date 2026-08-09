@@ -127,4 +127,59 @@ RSpec.describe 'Runtime Type Validation' do
       expect(obj.read_only_string).to eq('Hello')
     end
   end
+  describe 'enum-typed values' do
+    # Enum values are Jsii::Enum instances carrying their own fqn — they are
+    # NOT instances of the generated enum module, so identity has to be
+    # compared by fqn. (Before the enum modules registered their fqn,
+    # check_fqn resolved them to nil and skipped validation entirely: type
+    # checking was a silent no-op for every enum-typed position.)
+    let(:fqn) { 'jsii-calc.StringEnum' }
+
+    it 'accepts a member of the expected enum' do
+      expect { Jsii::Type.check_type(JsiiCalc::StringEnum::A, { 'fqn' => fqn }, 'prop') }
+        .not_to raise_error
+    end
+
+    it 'accepts an equal enum value deserialized from the kernel' do
+      expect { Jsii::Type.check_type(Jsii::Enum.new(fqn, 'A'), { 'fqn' => fqn }, 'prop') }
+        .not_to raise_error
+    end
+
+    it 'rejects a member of a different enum' do
+      expect { Jsii::Type.check_type(JsiiCalc::AllTypesEnum::MY_ENUM_VALUE, { 'fqn' => fqn }, 'prop') }
+        .to raise_error(TypeError, /prop/)
+    end
+
+    it 'rejects a non-enum value' do
+      expect { Jsii::Type.check_type('not-an-enum', { 'fqn' => fqn }, 'prop') }
+        .to raise_error(TypeError, /prop/)
+    end
+  end
+
+end
+
+RSpec.describe 'Jsii::Type.check_type — type spec decoding' do
+  # Generated call sites embed the type spec as base64 JSON. Decoding and
+  # parsing it at every call put that work on every type-checked argument of
+  # every method call at runtime; passing the encoded string lets the runtime
+  # decode once and cache.
+  let(:encoded) { Base64.strict_encode64({ 'primitive' => 'string' }.to_json) }
+
+  it 'accepts the encoded form and validates with it' do
+    expect { Jsii::Type.check_type('ok', encoded, 'arg') }.not_to raise_error
+    expect { Jsii::Type.check_type(42, encoded, 'arg') }.to raise_error(TypeError, /arg/)
+  end
+
+  it 'still accepts an already-decoded Hash' do
+    expect { Jsii::Type.check_type('ok', { 'primitive' => 'string' }, 'arg') }.not_to raise_error
+  end
+
+  it 'decodes a given spec only once' do
+    # Identity, not a JSON.parse spy: the kernel's reader thread calls
+    # JSON.parse concurrently, and stubbing it globally kills the sidecar.
+    first = Jsii::Type.send(:decode_type_ref, encoded)
+    second = Jsii::Type.send(:decode_type_ref, encoded)
+    expect(second).to equal(first)
+    expect(first).to be_frozen
+  end
 end

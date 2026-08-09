@@ -4,6 +4,7 @@ import { before, describe, it } from 'node:test';
 
 import { TypeSystem } from 'jsii-reflect';
 
+import { dedupCrossCategory, rubyModuleName, rubyName } from '../src/helpers';
 import { RubyGenerator } from '../src/ruby';
 
 // A representative subset of the CDK acronym list — only those exercised by
@@ -60,109 +61,99 @@ describe('Ruby naming behavior', () => {
 
   describe('rubyModuleName', () => {
     it('capitalizes acronyms correctly', () => {
-      assert.equal(rubyTarget.rubyModuleName('CfnVpc'), 'CfnVPC');
-      assert.equal(rubyTarget.rubyModuleName('CfnVPCConnection'), 'CfnVPCConnection');
-      assert.equal(rubyTarget.rubyModuleName('dbTable'), 'DBTable');
-      assert.equal(rubyTarget.rubyModuleName('IpAddress'), 'IPAddress');
-      assert.equal(rubyTarget.rubyModuleName('awsIpv4Cidr'), 'AWSIPv4CIDR');
-      assert.equal(rubyTarget.rubyModuleName('apiGateway'), 'APIGateway'); // API is an acronym
-      assert.equal(rubyTarget.rubyModuleName('EcsCluster'), 'ECSCluster');
+      assert.equal(rubyModuleName('CfnVpc', CDK_ACRONYMS), 'CfnVPC');
+      assert.equal(rubyModuleName('CfnVPCConnection', CDK_ACRONYMS), 'CfnVPCConnection');
+      assert.equal(rubyModuleName('dbTable', CDK_ACRONYMS), 'DBTable');
+      assert.equal(rubyModuleName('IpAddress', CDK_ACRONYMS), 'IPAddress');
+      assert.equal(rubyModuleName('awsIpv4Cidr', CDK_ACRONYMS), 'AWSIPv4CIDR');
+      assert.equal(rubyModuleName('apiGateway', CDK_ACRONYMS), 'APIGateway'); // API is an acronym
+      assert.equal(rubyModuleName('EcsCluster', CDK_ACRONYMS), 'ECSCluster');
     });
 
     it('produces valid constants for digit- and underscore-leading names', () => {
       // npm allows package names like `3d-tools`; Ruby constants must start
       // with an uppercase letter.  V_ prefix mirrors rubyConstName.
-      assert.equal(rubyTarget.rubyModuleName('3d-tools'), 'V_3dTools');
-      assert.equal(rubyTarget.rubyModuleName('3DSecure'), 'V_3DSecure');
-      assert.equal(rubyTarget.rubyModuleName('@scope/3d'), 'Scope::V_3d');
-      assert.equal(rubyTarget.rubyModuleName('_internal'), 'V__internal');
+      assert.equal(rubyModuleName('3d-tools'), 'V_3dTools');
+      assert.equal(rubyModuleName('3DSecure'), 'V_3DSecure');
+      assert.equal(rubyModuleName('@scope/3d'), 'Scope::V_3d');
+      assert.equal(rubyModuleName('_internal'), 'V__internal');
       // Ordinary names are untouched.
-      assert.equal(rubyTarget.rubyModuleName('jsii-calc'), 'JsiiCalc');
+      assert.equal(rubyModuleName('jsii-calc'), 'JsiiCalc');
     });
 
     it('treats acronyms as literal text, not regex patterns', () => {
       // A config-supplied acronym containing regex metacharacters must not
       // break generation (previously: "Nothing to repeat" SyntaxError) or
       // inject match behavior.
-      assert.doesNotThrow(() => rubyTarget.rubyModuleName('CppHelper', ['C++']));
-      assert.equal(rubyTarget.rubyModuleName('CppHelper', ['C++']), 'CppHelper');
-      assert.equal(rubyTarget.rubyModuleName('fooBar', ['.*']), 'FooBar');
+      assert.doesNotThrow(() => rubyModuleName('CppHelper', ['C++']));
+      assert.equal(rubyModuleName('CppHelper', ['C++']), 'CppHelper');
+      assert.equal(rubyModuleName('fooBar', ['.*']), 'FooBar');
     });
 
     it('scopes acronyms to the supplied list (per-assembly, not pooled)', () => {
       // Explicit empty list: nothing rewritten even though the test
       // assembly configures VPC as an acronym.
-      assert.equal(rubyTarget.rubyModuleName('CfnVpc', []), 'CfnVpc');
-      assert.equal(rubyTarget.rubyModuleName('CfnVpc', ['VPC']), 'CfnVPC');
-      // Default (no list passed) uses the generated assembly's own config.
-      assert.equal(rubyTarget.rubyModuleName('CfnVpc'), 'CfnVPC');
-    });
-
-    it('ignores blank acronym entries', () => {
-      // An empty-string acronym would match everywhere; assemblyAcronyms
-      // filters it out before it reaches the regex.
-      assert.deepEqual(
-        rubyTarget.assemblyAcronyms({
-          targets: { ruby: { acronyms: ['', 'VPC', 42] } },
-        }),
-        ['VPC'],
-      );
+      assert.equal(rubyModuleName('CfnVpc', []), 'CfnVpc');
+      assert.equal(rubyModuleName('CfnVpc', ['VPC']), 'CfnVPC');
+      // The generator-side default (assembly-config acronyms) is exercised
+      // through rubyFullTypeName below; blank-entry filtering is covered in
+      // helpers.test.ts.
     });
 
     it('does not over-capitalize acronyms embedded inside words', () => {
       // "AWSpecial" contains "AWS" but not at a word boundary — it must
       // survive unmangled, while true acronym positions are rewritten.
-      assert.equal(rubyTarget.rubyModuleName('AWSpecial'), 'AWSpecial');
-      assert.equal(rubyTarget.rubyModuleName('VpcEndpoint'), 'VPCEndpoint');
+      assert.equal(rubyModuleName('AWSpecial', CDK_ACRONYMS), 'AWSpecial');
+      assert.equal(rubyModuleName('VpcEndpoint', CDK_ACRONYMS), 'VPCEndpoint');
       assert.equal(
-        rubyTarget.rubyModuleName('awsCertificatemanager'),
+        rubyModuleName('awsCertificatemanager', CDK_ACRONYMS),
         'AWSCertificatemanager',
       );
-      assert.equal(rubyTarget.rubyModuleName('awsCeService'), 'AWSCEService');
+      assert.equal(rubyModuleName('awsCeService', CDK_ACRONYMS), 'AWSCEService');
     });
   });
 
   describe('rubyName', () => {
     it('passes through ordinary member names', () => {
-      assert.equal(rubyTarget.rubyName('fooBar'), 'foo_bar');
-      assert.equal(rubyTarget.rubyName('hello'), 'hello');
+      assert.equal(rubyName('fooBar'), 'foo_bar');
+      assert.equal(rubyName('hello'), 'hello');
     });
 
     it('prefixes Ruby keywords', () => {
-      assert.equal(rubyTarget.rubyName('break'), '_break');
-      assert.equal(rubyTarget.rubyName('class'), '_class');
-      assert.equal(rubyTarget.rubyName('while'), '_while');
+      assert.equal(rubyName('break'), '_break');
+      assert.equal(rubyName('class'), '_class');
+      assert.equal(rubyName('while'), '_while');
     });
 
     it('prefixes constructor/allocation hooks so members cannot clobber them', () => {
       // `def initialize` would silently replace the generated constructor;
       // `new`/`allocate` are the class methods used to instantiate proxies.
-      assert.equal(rubyTarget.rubyName('initialize'), '_initialize');
-      assert.equal(rubyTarget.rubyName('new'), '_new');
-      assert.equal(rubyTarget.rubyName('allocate'), '_allocate');
+      assert.equal(rubyName('initialize'), '_initialize');
+      assert.equal(rubyName('new'), '_new');
+      assert.equal(rubyName('allocate'), '_allocate');
     });
 
     it('prefixes runtime serialization/dispatch hooks', () => {
-      assert.equal(rubyTarget.rubyName('toJsii'), '_to_jsii');
-      assert.equal(rubyTarget.rubyName('rubyClass'), '_ruby_class');
-      assert.equal(rubyTarget.rubyName('send'), '_send');
+      assert.equal(rubyName('toJsii'), '_to_jsii');
+      assert.equal(rubyName('rubyClass'), '_ruby_class');
+      assert.equal(rubyName('send'), '_send');
     });
 
     it('prefixes anything landing in the reserved jsii_ namespace', () => {
-      assert.equal(rubyTarget.rubyName('jsiiRef'), '_jsii_ref');
-      assert.equal(rubyTarget.rubyName('jsiiSerialize'), '_jsii_serialize');
-      assert.equal(rubyTarget.rubyName('jsiiSomeFutureApi'), '_jsii_some_future_api');
+      assert.equal(rubyName('jsiiRef'), '_jsii_ref');
+      assert.equal(rubyName('jsiiSerialize'), '_jsii_serialize');
+      assert.equal(rubyName('jsiiSomeFutureApi'), '_jsii_some_future_api');
     });
 
     it('prefixes names that start with a digit', () => {
-      assert.equal(rubyTarget.rubyName('2fa'), '_2fa');
+      assert.equal(rubyName('2fa'), '_2fa');
     });
   });
 
   describe('dedupCrossCategory', () => {
-    const byRubyName = (m: any) => rubyTarget.rubyName(m.name);
+    const byRubyName = (m: any) => rubyName(m.name);
     const dedup = (props: any[], methods: any[]) =>
-      rubyTarget.dedupCrossCategory(
+      dedupCrossCategory(
         props,
         methods,
         byRubyName,
@@ -206,6 +197,17 @@ describe('Ruby naming behavior', () => {
             [{ name: 'foo_bar', docs: { deprecated: 'y' } }],
           ),
         /cannot pick a winner/,
+      );
+    });
+
+    it('names the colliding jsii members across categories', () => {
+      assert.throws(
+        () =>
+          dedup(
+            [{ name: 'fooBar', docs: { deprecated: 'x' } }],
+            [{ name: 'foo_bar', docs: { deprecated: 'y' } }],
+          ),
+        /jsii names: 'fooBar', 'foo_bar'/,
       );
     });
   });

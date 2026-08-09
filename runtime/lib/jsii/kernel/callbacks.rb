@@ -23,7 +23,11 @@ module Jsii
             result: Jsii::Serializer.dump(result)
           }
         })
-      rescue StandardError => e
+      # Exception, not StandardError: NotImplementedError (the idiomatic
+      # abstract-method stub) descends from ScriptError, and letting it escape
+      # leaves the sidecar waiting for a `complete` reply that never comes,
+      # deadlocking every subsequent call on the process.
+      rescue Exception => e # rubocop:disable Lint/RescueException
         # Notify the kernel that this callback failed so it can unblock the
         # pending request.  Without this the Node sidecar waits forever for a
         # { complete } envelope and the original Ruby call deadlocks.
@@ -128,7 +132,11 @@ module Jsii
       # @param value [Object] the value to introspect.
       # @return [Array<Module>] matching ancestor modules in order.
       def value_ancestors(value)
-        value.class.ancestors.select do |m|
+        # singleton_class, not class: an interface attached to one instance
+        # with `extend` is in the singleton's ancestry only. Jsii::Object's
+        # own jsii_interfaces already looks there, so using `class` here made
+        # the two paths disagree about what a value implements.
+        value.singleton_class.ancestors.select do |m|
           m.instance_of?(Module) && m.respond_to?(:jsii_fqn)
         end
       end
@@ -146,6 +154,14 @@ module Jsii
       def serialize_native_implementations(value)
         jsii_interface_modules = value_ancestors(value)
         return value if jsii_interface_modules.empty?
+
+        # Already materialized: reuse the ref. Registering again would create a
+        # second remote object for the same Ruby instance, so the host would
+        # stop recognising it by identity ("is this the same generator?",
+        # "remove this listener", CDK aspect de-duplication) and every pass
+        # would leak another kernel object.
+        existing = value.instance_variable_get(:@jsii_ref)
+        return { '$jsii.byref' => existing } if existing
 
         overrides = extract_native_overrides(value, jsii_interface_modules)
         jsii_interfaces = jsii_interface_modules.map(&:jsii_fqn)
@@ -188,16 +204,25 @@ module Jsii
       # @return [void]
       # @raise [RuntimeError] when a required (non-optional) member is missing.
       def validate_override!(value, interface, ruby_name, metadata, overrides)
-        unless value.class.method_defined?(ruby_name)
+        # `method_defined?` alone is vacuous here: the generated interface
+        # module defines a kernel-forwarding stub for every member, so simply
+        # including it satisfies the check. What distinguishes an actual
+        # implementation is its OWNER — user code, rather than a generated
+        # module (those answer to jsii_fqn).
+        # respond_to?/method on the INSTANCE, not the class: an implementation
+        # may be a singleton method (`define_singleton_method`, or a module
+        # attached with `extend`), which value.class never sees.
+        owner = value.respond_to?(ruby_name) ? value.method(ruby_name).owner : nil
+        implemented = !owner.nil? && !owner.respond_to?(:jsii_fqn)
+
+        unless implemented
           return if metadata[:is_optional]
 
           raise "Object of class #{value.class} is missing required method/property: " \
                 "#{ruby_name} (from interface #{interface.name})"
         end
 
-        # If the owner is not a JSII generated class/module, it's a user override
-        owner = value.method(ruby_name).owner
-        overrides << { metadata[:kind].to_s => metadata[:name] } unless owner.respond_to?(:jsii_fqn)
+        overrides << { metadata[:kind].to_s => metadata[:name] }
       end
     end
   end

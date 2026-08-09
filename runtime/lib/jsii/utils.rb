@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'monitor'
+
 module Jsii
   # String / Symbol / value utility functions used internally by the jsii
   # runtime.  Scoped under Jsii::Utils to avoid monkey-patching core classes —
@@ -24,13 +26,22 @@ module Jsii
 
     module_function
 
+    # Abbreviations codemaker's `toSnakeCase` folds before decamelizing, so
+    # `memoryLimitMiB` becomes `memory_limit_mib` rather than
+    # `memory_limit_mi_b`.  This mapping MUST match the generator's, or a
+    # kernel callback dispatches to a method name that was never generated
+    # (see compliance/spec/unit/utils_spec.rb).
+    COMMON_ABBREVIATIONS = %w[KiB MiB GiB].freeze
+    ABBREVIATION_RE = /(\A|[^A-Z])(#{COMMON_ABBREVIATIONS.map { |a| Regexp.escape(a) }.join('|')})(\z|[^a-z])/
+
     # Converts a camelCase or PascalCase string to snake_case.
-    # Implementation adapted from ActiveSupport's String#underscore.
+    # Implementation adapted from ActiveSupport's String#underscore, plus the
+    # abbreviation folding codemaker applies (the generator's mapper).
     #
     # @param str [String, Symbol] the value to convert.
     # @return [String] the snake_case form (a new String; the input is never mutated).
     def underscore(str)
-      s = str.to_s
+      s = fold_abbreviations(str.to_s)
       return s.dup unless /[A-Z-]/.match?(s)
 
       word = s.gsub('::', '/')
@@ -45,7 +56,33 @@ module Jsii
     # @param str [String, Symbol] the value to convert.
     # @return [String] the camelCase form.
     def camelize(str)
-      str.to_s.gsub(/_([a-z\d])/) { ::Regexp.last_match(1).upcase }
+      s = str.to_s
+      # Only *internal* underscores are word separators.  A leading underscore
+      # is the generator's escape marker (reserved words, the jsii_ namespace,
+      # digit-leading names) — consuming it here would turn `_next` into
+      # `Next`, a member the kernel does not have.  Use {#jsii_member_name} to
+      # invert {#ruby_member_name}.
+      leading = s[/\A_+/] || ''
+      leading + s[leading.length..].to_s.gsub(/_([a-z\d])/) { ::Regexp.last_match(1).upcase }
+    end
+
+    # Inverse of {#ruby_member_name}: maps a Ruby identifier back to the JSII
+    # member name as it appears on the wire.  Strips the generator's leading
+    # `_` escape when (and only when) the remainder is one of the names that
+    # escape gets applied to, so `_next` -> `next` while a member genuinely
+    # named `_foo` is left alone.
+    #
+    # @param ruby_name [String, Symbol] the Ruby identifier.
+    # @return [String] the JSII member name.
+    def jsii_member_name(ruby_name)
+      name = ruby_name.to_s
+      if name.start_with?('_')
+        stripped = name[1..].to_s
+        if RUBY_RESERVED_NAMES.include?(stripped) || stripped.start_with?('jsii_') || /\A\d/.match?(stripped)
+          return camelize(stripped)
+        end
+      end
+      camelize(name)
     end
 
     # Map a JSII member name (the wire form, e.g. `break`, `fooBar`, `2fa`)
@@ -70,6 +107,14 @@ module Jsii
       return "_#{snake}" if RUBY_RESERVED_NAMES.include?(snake) || snake.start_with?('jsii_') || /\A\d/.match?(snake)
 
       snake
+    end
+
+    # Mirrors codemaker's abbreviation handling: `...MiB` -> `...Mib` before
+    # decamelizing, so the boundary rules produce `mib` not `mi_b`.
+    def fold_abbreviations(str)
+      str.gsub(ABBREVIATION_RE) do
+        "#{::Regexp.last_match(1)}#{::Regexp.last_match(2)[0].upcase}#{::Regexp.last_match(2)[1..].downcase}#{::Regexp.last_match(3)}"
+      end
     end
 
     # Returns true when the value is nil, empty, or — for strings — only
@@ -128,11 +173,39 @@ module Jsii
         end
       return value if callable.nil?
 
-      wrapper = Class.new do
-        include interface_module
-        define_method(ruby_name) { |*args| callable.call(*args) }
-      end
-      wrapper.new
+      wrapper_instance_for(callable, interface_module, ruby_name)
     end
+
+    # One wrapper class per (interface, member) and one wrapper INSTANCE per
+    # callable. Building a fresh anonymous Class on every call meant the same
+    # Proc passed twice produced two unrelated wrappers — two remote objects,
+    # two strong-reference entries, and a host unable to recognise the
+    # callback it was handed twice as the same object.
+    #
+    # Both caches are keyed weakly on identity so a callable that goes out of
+    # scope does not pin its wrapper.
+    WRAPPER_CLASSES = {}
+    WRAPPER_INSTANCES = ObjectSpace::WeakMap.new
+    WRAPPER_MONITOR = Monitor.new
+    private_constant :WRAPPER_CLASSES, :WRAPPER_INSTANCES, :WRAPPER_MONITOR
+
+    def wrapper_instance_for(callable, interface_module, ruby_name)
+      WRAPPER_MONITOR.synchronize do
+        existing = WRAPPER_INSTANCES[callable]
+        return existing if existing
+
+        klass = WRAPPER_CLASSES[[interface_module, ruby_name]] ||= Class.new do
+          include interface_module
+          define_method(:initialize) { |target| @jsii_callable = target }
+          define_method(ruby_name) { |*args| @jsii_callable.call(*args) }
+        end
+
+        instance = klass.new(callable)
+        WRAPPER_INSTANCES[callable] = instance
+        instance
+      end
+    end
+    module_function :wrapper_instance_for
+    private_class_method :wrapper_instance_for
   end
 end

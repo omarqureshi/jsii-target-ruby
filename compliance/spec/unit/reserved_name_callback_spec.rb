@@ -12,6 +12,17 @@ RSpec.describe 'reserved-name callback dispatch' do
       def _break;    @calls << :break;    nil; end
       def _while;    @calls << :while;    'w'; end
       def _class;    @calls << :class;    nil; end
+
+      # The interface declares every Java reserved word as a required member;
+      # this double only exercises three. Registration (rightly) refuses a
+      # partial implementation, so stub the remainder — `include` alone does
+      # not count, since the generated module's own stubs just forward to the
+      # kernel.
+      JsiiCalc::IJavaReservedWordsInAnInterface.jsii_overridable_methods.each_key do |member|
+        next if instance_method(member).owner.equal?(self)
+
+        define_method(member) { nil }
+      end
     end) unless Object.const_defined?(:ReservedWordImpl)
   end
 

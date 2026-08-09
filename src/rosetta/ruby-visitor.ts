@@ -1,4 +1,8 @@
 import * as ts from 'typescript';
+
+import { rubyGemName } from '../gemspec';
+import { resolveRubyModulePath, rubyConstName, rubyModuleName, rubyName, toPascalCase } from '../helpers';
+import { loadRubyTargetOverlay } from '../target-config';
 import { DefaultVisitor } from 'jsii-rosetta/lib/languages/default';
 import { TargetLanguage } from 'jsii-rosetta/lib/languages/target-language';
 import { analyzeObjectLiteral, ObjectLiteralStruct } from 'jsii-rosetta/lib/jsii/jsii-types';
@@ -8,7 +12,6 @@ import {
   isJsiiProtocolType,
   JsiiSymbol,
   simpleName,
-  namespaceName,
 } from 'jsii-rosetta/lib/jsii/jsii-utils';
 import { jsiiTargetParameter } from 'jsii-rosetta/lib/jsii/packages';
 import { NO_SYNTAX, OTree } from 'jsii-rosetta/lib/o-tree';
@@ -24,6 +27,28 @@ import {
 } from 'jsii-rosetta/lib/typescript/types';
 
 /**
+ * Whether a string literal is the final token on the line it will be rendered
+ * on — the only position where a heredoc body (which must begin on the next
+ * line) cannot swallow the rest of the expression.
+ */
+function endsItsLine(node: ts.Node): boolean {
+  const parent = node.parent;
+  if (!parent) {
+    return true;
+  }
+  if (ts.isVariableDeclaration(parent) || ts.isPropertyDeclaration(parent)) {
+    return parent.initializer === node;
+  }
+  if (ts.isBinaryExpression(parent) && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    return parent.right === node;
+  }
+  if (ts.isReturnStatement(parent) || ts.isExpressionStatement(parent)) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Whether the expression's (non-nullable) type is callable — i.e. this
  * expression evaluates to a function. Inlined from the fork's default.ts
  * (not exported by upstream jsii-rosetta).
@@ -31,56 +56,6 @@ import {
 function isExpressionOfFunctionType(typeChecker: ts.TypeChecker, expr: ts.Expression) {
   const type = typeChecker.getTypeAtLocation(expr).getNonNullableType();
   return type.getCallSignatures().length > 0;
-}
-
-// Ruby keywords and standard reserved names. Since Rosetta translates code snippets
-// directly without dynamic target configurations, we use this hardcoded set to escape
-// identifiers (e.g. by prefixing with an underscore) to avoid syntax errors in the output.
-const RUBY_RESERVED_NAMES = new Set([
-  'BEGIN',
-  'END',
-  'alias',
-  'and',
-  'begin',
-  'break',
-  'case',
-  'class',
-  'def',
-  'defined?',
-  'do',
-  'else',
-  'elsif',
-  'end',
-  'ensure',
-  'false',
-  'for',
-  'if',
-  'in',
-  'module',
-  'next',
-  'nil',
-  'not',
-  'or',
-  'redo',
-  'rescue',
-  'retry',
-  'return',
-  'self',
-  'super',
-  'then',
-  'true',
-  'undef',
-  'unless',
-  'until',
-  'when',
-  'while',
-  'yield',
-  'send',
-  '__send__',
-]);
-
-function toPascalCase(str: string) {
-  return str.replace(/(^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_, _sep, char) => char.toUpperCase());
 }
 
 /**
@@ -122,11 +97,10 @@ export function toSnakeCase(camel: string) {
     // Looks like PascalCase, probably a class name, don't snake_case
     return camel;
   }
-  const snake = camel
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
-    .toLowerCase();
-  return RUBY_RESERVED_NAMES.has(snake) ? `_${snake}` : snake;
+  // Member position: the generator's own mapper, so example code always
+  // names the members the generated bindings actually define (reserved
+  // words, the runtime machinery, the jsii_ namespace, digit-leading).
+  return rubyName(camel);
 }
 
 /**
@@ -140,59 +114,38 @@ export function toSnakeCase(camel: string) {
  *   rosetta deliberately carries no built-in list — a snippet translated
  *   without assembly info simply gets plain PascalCase.
  */
-export function rubyModuleName(name: string, acronyms: string[] = []): string {
-  if (name.startsWith('@')) {
-    const parts = name.slice(1).split('/');
-    return parts.map((p) => rubyModuleName(p, acronyms)).join('::');
-  }
-  if (name.includes('-')) {
-    const parts = name.split('-');
-    return parts.map((p) => rubyModuleName(p, acronyms)).join('');
-  }
-  const sanitized = name.replace(/[^a-zA-Z0-9_]/g, '');
-  let pascal = sanitized.charAt(0) === sanitized.charAt(0).toUpperCase() ? sanitized : toPascalCase(sanitized);
+export { rubyModuleName } from '../helpers';
 
-  const allAcronyms = [...new Set(acronyms)];
-  // Restore uppercase casing to the caller-declared acronyms in the PascalCase string.
-  // We use word-boundary and next-character checks to avoid uppercase conversion inside unrelated
-  // words (e.g., capitalizing 'SI' inside 'Simple').
-  for (const acronym of allAcronyms) {
-    const regex = new RegExp(`(${acronym})`, 'ig');
-    pascal = pascal.replace(regex, (match, _p1, offset) => {
-      if (match[0] !== match[0].toUpperCase()) return match;
-      const nextChar = pascal[offset + match.length];
-      if (nextChar) {
-        const isValid =
-          /^[A-Z0-9]$/.test(nextChar) ||
-          (nextChar === 's' &&
-            (!pascal[offset + match.length + 1] || /^[A-Z0-9]$/.test(pascal[offset + match.length + 1])));
-        if (!isValid) return match;
-      }
-      return acronym;
-    });
-  }
-  return pascal;
+/**
+ * Ruby module name for a jsii module FQN (e.g. `aws-cdk-lib.aws_s3`) when no assembly is
+ * loaded: resolved against the target-config overlay (JSII_RUBY_TARGET_CONFIG) — the SAME
+ * naming data generation uses — so snippet namespaces align with the compiled gems by
+ * construction (`AWSCDK::S3` comes from config/cdk-targets.json, not from code). Without
+ * an overlay entry the name derives generically, exactly as the generator would for an
+ * unconfigured assembly. This removed the visitor's last piece of CDK-specific knowledge.
+ */
+export function guessRubyModuleName(fqn: string): string {
+  const packageName = fqn.split('.')[0];
+  const entry = loadRubyTargetOverlay()?.[packageName];
+  return resolveRubyModulePath(fqn, {
+    assemblyName: packageName,
+    acronyms: (entry?.acronyms as string[] | undefined) ?? [],
+    rootModule: () => entry?.module,
+    submoduleModule: (submoduleFqn) => entry?.submodules?.[submoduleFqn]?.module,
+  });
 }
 
 /**
- * Best-effort Ruby module name for a jsii module FQN (e.g. `aws-cdk-lib.aws_s3`) when no
- * assembly is loaded. The core CDK library configures its Ruby names explicitly in
- * `.jsiirc.json` (`aws-cdk-lib` -> `AWSCDK`, `aws-s3` -> `S3`, dropping the redundant
- * service-level `aws` prefix); that config is unavailable without the assemblies, so the
- * dominant case is mirrored here to keep snippet namespaces aligned with the compiled gems.
- *
- * NOTE: this special-casing is the one remaining piece of CDK-specific knowledge in this
- * visitor, and it only affects snippets whose type references cannot be resolved to an
- * assembly at all. The structural fix is for callers (which hold the assembly) to supply
- * naming config for unresolved references; until that API exists, this guess keeps
- * non-compiling README snippets readable.
+ * The Ruby name for whatever jsii declaration a node resolves to, when it
+ * resolves to one at all. Nodes that are not jsii symbols (locals, imports
+ * from elsewhere) return undefined so the caller can fall back to its own
+ * rendering.
  */
-export function guessRubyModuleName(fqn: string): string {
-  const [packageName, ...submodulePath] = fqn.split('.');
-  const isCoreCdk = packageName === 'aws-cdk-lib';
-  const root = isCoreCdk ? 'AWSCDK' : rubyModuleName(packageName);
-  const segments = submodulePath.map((s) => rubyModuleName(isCoreCdk ? s.replace(/^aws[-_]/, '') : s));
-  return [root, ...segments].join('::');
+function rubyNameOf(context: RubyVisitorContext, node: ts.Node): OTree | undefined {
+  const jsiiSym = lookupJsiiSymbolFromNode(context.typeChecker, node);
+  if (!jsiiSym) return undefined;
+  const rubyName = findRubyName(jsiiSym);
+  return rubyName ? new OTree([rubyName]) : undefined;
 }
 
 /**
@@ -200,7 +153,7 @@ export function guessRubyModuleName(fqn: string): string {
  * Inspects the associated JSII assembly target metadata for explicit module configuration
  * (e.g. `ruby.module`) and package-specific acronyms to output accurate namespaces.
  */
-function findRubyName(jsiiSymbol: JsiiSymbol): string | undefined {
+export function findRubyName(jsiiSymbol: JsiiSymbol): string | undefined {
   if (!jsiiSymbol.sourceAssembly?.assembly) {
     // Don't have accurate info, just guess from the FQN
     return jsiiSymbol.symbolType !== 'module' ? simpleName(jsiiSymbol.fqn) : guessRubyModuleName(jsiiSymbol.fqn);
@@ -208,28 +161,25 @@ function findRubyName(jsiiSymbol: JsiiSymbol): string | undefined {
 
   const asm = jsiiSymbol.sourceAssembly.assembly;
 
-  // Collect acronyms from the assembly targets
-  const acronyms: string[] = asm.targets?.ruby?.acronyms ?? [];
+  // The overlay takes precedence over the assembly's own ruby target, exactly
+  // as applyRubyTargetOverlay merges it for generation. Rosetta loads its own
+  // copy of the assembly, which the generator's in-place merge never touches —
+  // so without this, a library whose Ruby naming lives entirely in the overlay
+  // (aws-cdk-lib: no `targets.ruby` at all) renders examples under a derived
+  // root like `AwsCdkLib::AwsS3` instead of `AWSCDK::S3`.
+  const entry = loadRubyTargetOverlay()?.[asm.name];
 
-  return recurse(jsiiSymbol.fqn);
-
-  function recurse(fqn: string): string {
-    const baseFqn = fqn.split('#')[0];
-    if (baseFqn === asm.name) {
-      return jsiiTargetParameter(asm, 'ruby.module') ?? rubyModuleName(baseFqn, acronyms);
-    }
-    if (asm.submodules?.[baseFqn]) {
-      const modName = jsiiTargetParameter(asm.submodules[baseFqn], 'ruby.module');
-      if (modName) {
-        return modName;
-      }
-    }
-
-    const ns = namespaceName(baseFqn);
-    const nsRubyName = recurse(ns);
-    const leaf = simpleName(baseFqn);
-    return `${nsRubyName}::${rubyModuleName(leaf, acronyms)}`;
-  }
+  // The same walk the generator uses (deepest explicit prefix wins, the
+  // rest derives with the owning assembly's acronyms).
+  return resolveRubyModulePath(jsiiSymbol.fqn.split('#')[0], {
+    assemblyName: asm.name,
+    acronyms:
+      (entry?.acronyms as string[] | undefined) ?? (asm.targets?.ruby?.acronyms as string[] | undefined) ?? [],
+    rootModule: () => entry?.module ?? jsiiTargetParameter(asm, 'ruby.module'),
+    submoduleModule: (submoduleFqn) =>
+      entry?.submodules?.[submoduleFqn]?.module ??
+      (asm.submodules?.[submoduleFqn] ? jsiiTargetParameter(asm.submodules[submoduleFqn], 'ruby.module') : undefined),
+  });
 }
 
 /**
@@ -272,6 +222,26 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
    */
   private readonly emittedRequires = new Set<string>();
 
+  /**
+   * Local import alias -> the jsii fqn of the module it names, for the source
+   * file currently being rendered.
+   *
+   * Most published examples are marked "generated from non-compiling source":
+   * rosetta cannot resolve their symbols, so a type reference falls back to
+   * rendering the local alias and `s3.Bucket` becomes `S3::Bucket` — a
+   * constant that does not exist. The import statement is the only thing tying
+   * the alias to an assembly, so remember it. Reset per source file alongside
+   * {@link emittedRequires}, for the same reason.
+   */
+  private readonly importedModuleFqns = new Map<string, string>();
+
+  /**
+   * Local name -> the module it was selectively imported from, plus the name
+   * it has there (which a renamed import changes). Same lifetime and reason as
+   * {@link importedModuleFqns}.
+   */
+  private readonly importedTypeModules = new Map<string, { fqn: string; name: string }>();
+
   public constructor() {
     super();
   }
@@ -282,6 +252,8 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
 
   public override sourceFile(node: ts.SourceFile, context: RubyVisitorContext): OTree {
     this.emittedRequires.clear();
+    this.importedModuleFqns.clear();
+    this.importedTypeModules.clear();
     return super.sourceFile(node, context);
   }
 
@@ -290,6 +262,58 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
    * Maps relative paths to `require_relative` and package dependencies to `require` with scoped
    * names converted to standard gem naming format (e.g. @scope/pkg -> scope-pkg).
    */
+  /**
+   * Record which module a full (`import * as x`) import names, so later type
+   * references through that alias can be qualified.
+   *
+   * The npm specifier's path segments are the submodule: `aws-cdk-lib/aws-s3`
+   * is the `aws_s3` submodule of `aws-cdk-lib`. Selective imports
+   * (`import { Bucket } from ...`) bind type names directly rather than a
+   * namespace, so there is no alias to record.
+   */
+  private rememberImportedModule(node: ImportStatement, pkg: string, submodulePath: string[]): void {
+    const fqn = [pkg, ...submodulePath.map((seg) => seg.replace(/-/g, '_'))].join('.');
+
+    if (node.imports.import === 'full') {
+      for (const alias of [node.imports.sourceName, node.imports.alias]) {
+        if (alias) {
+          this.importedModuleFqns.set(alias, fqn);
+        }
+      }
+      return;
+    }
+
+    // A selective import binds the name directly, so a reference carries no
+    // alias at all: record the local name against the module it came from.
+    // Only type-like (PascalCase) names are qualified at the reference site,
+    // so recording value bindings here is harmless.
+    for (const element of node.imports.elements) {
+      const local = element.alias ?? element.sourceName;
+      if (local) {
+        this.importedTypeModules.set(local, { fqn, name: element.sourceName });
+      }
+    }
+  }
+
+  /**
+   * The Ruby module path for a local import alias, if it names one.
+   */
+  private rubyModuleForAlias(alias: string): string | undefined {
+    const fqn = this.importedModuleFqns.get(alias);
+    return fqn ? guessRubyModuleName(fqn) : undefined;
+  }
+
+  /**
+   * A bare type name as a Ruby constant path: qualified by the module it was
+   * selectively imported from when that is known, otherwise mapped on its own.
+   */
+  private rubyTypeReference(text: string): string {
+    const imported = this.importedTypeModules.get(text);
+    return imported
+      ? `${guessRubyModuleName(imported.fqn)}::${rubyModuleName(imported.name)}`
+      : rubyModuleName(text);
+  }
+
   public override importStatement(node: ImportStatement, _context: RubyVisitorContext): OTree {
     if (node.packageName.startsWith('.')) {
       return this.renderRequire(`require_relative '${node.packageName}'`);
@@ -298,10 +322,15 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     // gem is the npm *package* — the submodule is autoloaded from it, there is no
     // per-submodule require. Keep the package name only: two segments for a scoped
     // package (`@scope/name`), one otherwise. So `aws-cdk-lib/aws-s3tables` -> the
-    // `aws-cdk-lib` gem, not the non-existent `aws-cdk-lib-aws-s3tables`.
+    // `aws-cdk-lib` gem, not the non-existent `aws-cdk-lib-aws-s3tables`. The gem
+    // name itself comes from the generator's mapper, overlay-aware — a library
+    // that declares a custom gem name gets correct requires in its docs.
     const parts = node.packageName.split('/');
     const pkg = node.packageName.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
-    const gemName = pkg.replace(/^@/, '').replace(/\//g, '-');
+
+    this.rememberImportedModule(node, pkg, parts.slice(node.packageName.startsWith('@') ? 2 : 1));
+
+    const gemName = loadRubyTargetOverlay()?.[pkg]?.gem ?? rubyGemName({ name: pkg });
     return this.renderRequire(`require '${gemName}'`);
   }
 
@@ -431,7 +460,7 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     }
 
     if (isEnumAccess(context.typeChecker, node)) {
-      return new OTree([context.convert(node.expression), '::', toSnakeCase(node.name.text).toUpperCase()]);
+      return new OTree([context.convert(node.expression), '::', rubyConstName(node.name.text)]);
     }
 
     // Static readonly (const) property access — the "enum-like class" pattern
@@ -441,7 +470,7 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     // Without this, the access falls into the type-reference branch below and the
     // member is dropped, leaving just `AWSCDK::S3::BlockPublicAccess`.
     if (isStaticReadonlyAccess(context.typeChecker, node)) {
-      return new OTree([context.convert(node.expression), '.', toSnakeCase(node.name.text).toUpperCase()]);
+      return new OTree([context.convert(node.expression), '.', rubyConstName(node.name.text)]);
     }
 
     const nameText = node.name.text;
@@ -449,17 +478,15 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     const inTypeExpr = context.currentContext.inTypeExpression || isPascalCase;
 
     if (submoduleReference != null || inTypeExpr) {
-      const jsiiSym = lookupJsiiSymbolFromNode(context.typeChecker, node);
-      if (jsiiSym) {
-        const rubyName = findRubyName(jsiiSym);
-        if (rubyName) {
-          return new OTree([rubyName]);
-        }
-      }
+      const named = rubyNameOf(context, node);
+      if (named) return named;
 
       let exprNode = context.updateContext({ inTypeExpression: inTypeExpr }).convert(node.expression);
       if (inTypeExpr && ts.isIdentifier(node.expression)) {
-        exprNode = new OTree([rubyModuleName(context.textOf(node.expression))]);
+        // An import alias resolves to its assembly's module path (overlay
+        // aware); anything else can only be PascalCased as-is.
+        const text = context.textOf(node.expression);
+        exprNode = new OTree([this.rubyModuleForAlias(text) ?? rubyModuleName(text)]);
       }
 
       let nameNode = context.convert(node.name);
@@ -481,6 +508,10 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
       }
     }
 
+    // Struct-typed reads render as `s[:member]`, which is how a Ruby user
+    // writes them while the value is still a hash literal. Jsii::Struct
+    // answers the same form (see Jsii::Struct#[]), so the rendering is
+    // correct for hydrated structs coming back from the kernel too.
     const exprType = context.typeOfExpression(node.expression);
     if (exprType && analyzeStructType(context.typeChecker, exprType) !== false) {
       return new OTree([context.convert(node.expression), '[:', toSnakeCase(node.name.text), ']']);
@@ -502,6 +533,17 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     if (node.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword) {
       return new OTree([context.convert(node.left), '.is_a?(', context.convert(node.right), ')']);
     }
+
+    // Nullish coalescing is nil-specific: Ruby's `||` also replaces `false`
+    // and would silently change behaviour for boolean-valued expressions.
+    if (node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+      const left = context.convert(node.left);
+      return new OTree([left, '.nil? ? ', context.convert(node.right), ' : ', left]);
+    }
+    if (node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionEqualsToken) {
+      const target = context.convert(node.left);
+      return new OTree([target, ' = ', context.convert(node.right), ' if ', target, '.nil?']);
+    }
     const operator = this.translateBinaryOperator(context.textOf(node.operatorToken));
     return new OTree([context.convert(node.left), ' ', operator, ' ', context.convert(node.right)]);
   }
@@ -512,10 +554,9 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
         return '==';
       case '!==':
         return '!=';
-      case '??':
-        return '||';
-      case '??=':
-        return '||=';
+      // NB: `??` / `??=` are NOT handled here — `||` differs for `false` and
+      // is rewritten structurally in binaryExpression.
+
       default:
         return operator;
     }
@@ -606,12 +647,11 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
       return new OTree([toSnakeCase(text)]);
     }
 
-    const jsiiSym = lookupJsiiSymbolFromNode(context.typeChecker, node);
-    if (jsiiSym) {
-      const rubyName = findRubyName(jsiiSym);
-      if (rubyName) {
-        return new OTree([rubyName]);
-      }
+    const named = rubyNameOf(context, node);
+    if (named) return named;
+
+    if (this.importedTypeModules.has(text)) {
+      return new OTree([this.rubyTypeReference(text)]);
     }
 
     return new OTree([text]);
@@ -625,7 +665,14 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
       node.arguments && node.arguments.length > 0
         ? new OTree(['('], context.convertAll(node.arguments), { separator: ', ', suffix: ')' })
         : new OTree([]);
-    return new OTree([context.convert(node.expression), '.new', args], [], { canBreakLine: true });
+    // A bare identifier in constructor position names a TYPE, so it renders
+    // with the type-name mapper — the same one classDeclaration uses. Left to
+    // the generic identifier path it would snake_case (`my_api.new`), which
+    // references a local variable that does not exist.
+    const target = ts.isIdentifier(node.expression)
+      ? new OTree([this.rubyTypeReference(node.expression.text)])
+      : context.convert(node.expression);
+    return new OTree([target, '.new', args], [], { canBreakLine: true });
   }
 
   /**
@@ -922,10 +969,15 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     // preserving its initializer, rather than an instance attribute macro. Ruby constants must
     // begin with an uppercase letter.
     if (isStatic) {
+      // Reads of a static render as a class-method call — `C.MY_VALUE` for
+      // `static readonly` (constant casing, matching what pacmak generates
+      // for real jsii statics) and `C.foo` otherwise — so the declaration has
+      // to define exactly that method. Emitting a bare constant here left
+      // every read referencing something that was never defined.
       const rawName = node.name.getText();
-      const constName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+      const methodName = isReadonly ? rubyConstName(rawName) : toSnakeCase(rawName);
       const value = node.initializer ? context.convert(node.initializer) : new OTree(['nil']);
-      return new OTree([`${constName} = `, value], [], { canBreakLine: true });
+      return new OTree([`def self.${methodName} = `, value], [], { canBreakLine: true });
     }
 
     const attrMethod = isReadonly ? 'attr_reader' : 'attr_accessor';
@@ -1005,7 +1057,14 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
    * using standard JSON-serialized double-quotes.
    */
   private renderStringLiteral(node: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral): OTree {
-    if (node.text.includes('\n')) {
+    // A heredoc's body has to start on the line AFTER the opener, but the
+    // renderer emits it inline — so anything that follows the literal in the
+    // same expression lands after the terminator (`HERE, 42)`), which does
+    // not parse. Heredocs are therefore only safe where the literal is the
+    // last thing on its line: the value of an assignment, or a return.
+    // Everywhere else a quoted literal with escaped newlines is used, which
+    // is always valid.
+    if (node.text.includes('\n') && endsItsLine(node)) {
       const marker = 'HERE';
       let safeMarker = marker;
       let i = 0;

@@ -19,7 +19,12 @@ module Jsii
       instance = Jsii::Object.allocate.extend(klass)
     end
     instance.instance_variable_set(:@jsii_ref, obj.jsii_ref)
-    Jsii::Object.register_instance(instance)
+    # A downcast is a VIEW, not a replacement: the registry entry for a ref is
+    # what the kernel's callback dispatcher resolves to when invoking guest
+    # overrides, so overwriting it with a bare proxy silently stops every
+    # override on the original object from firing. Only claim the entry when
+    # nothing live holds it.
+    Jsii::Object.register_instance(instance) unless Jsii::Object.find_by_ref(obj.jsii_ref)
     instance
   end
 end

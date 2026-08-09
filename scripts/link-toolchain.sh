@@ -40,7 +40,21 @@ if [[ -e "${jsii_repo}/packages/jsii-calc/.jsii" ]]; then
 fi
 
 if [[ -n "${rosetta_repo}" ]]; then
-  link jsii-rosetta "$(cd "${rosetta_repo}" && pwd)"
+  rosetta_abs="$(cd "${rosetta_repo}" && pwd)"
+  link jsii-rosetta "${rosetta_abs}"
+
+  # CRITICAL: jsii-pacmak resolves jsii-rosetta from the MONOREPO's
+  # node_modules — by default the published npm copy, which has no language
+  # registry. Registering a language into a different copy has no effect on
+  # the reader pacmak hands the target, so examples come back untranslated.
+  # Point the monorepo at the same checkout.
+  monorepo_rosetta="${jsii_repo}/node_modules/jsii-rosetta"
+  if [[ ! -L "${monorepo_rosetta}" ]] || [[ "$(readlink "${monorepo_rosetta}")" != "${rosetta_abs}" ]]; then
+    rm -rf "${monorepo_rosetta}"
+    ln -sfn "${rosetta_abs}" "${monorepo_rosetta}"
+    echo "  (monorepo) jsii-rosetta -> ${rosetta_abs}"
+  fi
+
   # The plugin compiles against the rosetta checkout's TypeScript version to
   # avoid dual-compiler type clashes in the visitor.
   if [[ -d "${rosetta_repo}/node_modules/typescript" ]]; then

@@ -16,7 +16,17 @@ export function registerRosettaLanguage(): void {
     return; // this jsii-rosetta does not expose its internals
   }
   if (typeof registry.registerTargetLanguage !== 'function') {
-    return; // this jsii-rosetta predates the language registry
+    // Loud, because the failure is otherwise invisible: generation succeeds
+    // and every example silently comes back as its original TypeScript. The
+    // usual cause is jsii-pacmak resolving a DIFFERENT jsii-rosetta copy
+    // (the published one, which has no registry) than the plugin registers
+    // into — see scripts/link-toolchain.sh.
+    console.error(
+      '[jsii-target-ruby] the resolved jsii-rosetta has no language registry; ' +
+        'example translation is DISABLED (examples will stay TypeScript). ' +
+        'Ensure jsii-pacmak resolves a jsii-rosetta with external-language support.',
+    );
+    return;
   }
   try {
     registry.registerTargetLanguage('ruby', {

@@ -3,7 +3,7 @@
 #
 # Per-namespace landing pages, driven by the YARD output tree (so it also covers
 # namespaces the assembly doesn't tag with a Ruby module — e.g. the ~280 per-service
-# sub-namespaces under `interfaces`). Walks AWSCDK/**: a subdir is a namespace unless
+# sub-namespaces under `interfaces`). Walks <root-module>/**: a subdir is a namespace unless
 # its sibling <X>.html is a "Class:" page (that's a class's nested-types dir, e.g.
 # CfnTable). Each landing lists child namespaces + classes/interfaces/enums. Kind and
 # summary come from the assembly where available, else the YARD page type.
@@ -13,11 +13,14 @@ require 'json'
 require 'zlib'
 require 'set'
 require_relative 'render'
+require_relative 'root_module'
 
 assembly_path, out_dir = ARGV
-awscdk = File.join(out_dir, 'AWSCDK')
 raw = File.binread(assembly_path)
 assembly = JSON.parse(raw[0, 2].bytes == [0x1f, 0x8b] ? Zlib.gunzip(raw) : raw)
+# Root module name is library data (targets.ruby.module), not a constant here.
+root_module = DocsRoot.from_assembly(assembly)
+awscdk = File.join(out_dir, root_module)
 
 norm = ->(s) { s.downcase.gsub(/[^a-z0-9]/, '') }
 ruby_mod = {}
@@ -55,7 +58,7 @@ end
 count = 0
 process = lambda do |dir|
   segs = dir.sub(%r{\A#{Regexp.escape(awscdk)}/?}, '').split('/').reject(&:empty?)
-  rm = (['AWSCDK'] + segs).join('::')
+  rm = ([root_module] + segs).join('::')
   info = by_mod[rm]
 
   # A subdir is a namespace unless it's a type's nested-types dir: excluded if the
@@ -95,7 +98,7 @@ process = lambda do |dir|
   other = types.reject { |c| SECTIONS.map(&:first).include?(c[:kind]) }
   sections << %(<h2 class="sec">Other <span class="ct">#{other.length}</span></h2>\n      #{render_rows.call(other)}) if other.any?
 
-  crumb = [%(<a href="#{'../' * segs.length}index.html">AWSCDK</a>)]
+  crumb = [%(<a href="#{'../' * segs.length}index.html">#{root_module}</a>)]
   segs.each_with_index do |seg, i|
     crumb << (i == segs.length - 1 ? %(<span class="cur">#{esc.call(seg)}</span>) : %(<a href="#{'../' * (segs.length - 1 - i)}index.html">#{esc.call(seg)}</a>))
   end
