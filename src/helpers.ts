@@ -489,3 +489,45 @@ export function rubyCallParams(
     })
     .join(', ');
 }
+
+/**
+ * Every progressive module prefix of a `::`-separated Ruby path, outermost
+ * first: `A::B::C` -> `['A', 'A::B', 'A::B::C']`.
+ */
+export function modulePrefixes(path: string): string[] {
+  if (!path) return [];
+  const prefixes: string[] = [];
+  let current = '';
+  for (const part of path.split('::')) {
+    current = current ? `${current}::${part}` : part;
+    prefixes.push(current);
+  }
+  return prefixes;
+}
+
+/**
+ * The module fragments that need pre-declaring for a set of Ruby paths,
+ * de-duplicated and ordered shallowest-first so each `module X; end` is
+ * emitted before anything nested inside it.
+ *
+ * `exclude` drops individual fragments (a namespace fragment whose Ruby name
+ * collides with a generated class must not be re-opened as a module) WITHOUT
+ * pruning the fragments below it — those still need declaring.
+ */
+export function namespacePrefixes(
+  paths: Iterable<string>,
+  exclude?: ReadonlySet<string>,
+): string[] {
+  const fragments = new Set<string>();
+  for (const path of paths) {
+    for (const prefix of modulePrefixes(path)) {
+      if (exclude?.has(prefix)) continue;
+      fragments.add(prefix);
+    }
+  }
+  // Stable sort over insertion order: equal-depth fragments keep first-seen
+  // order, which is what makes the emitted output reproducible.
+  return Array.from(fragments).sort(
+    (a, b) => a.split('::').length - b.split('::').length,
+  );
+}

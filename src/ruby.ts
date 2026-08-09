@@ -404,11 +404,8 @@ export class RubyGenerator extends Generator {
     this.emitDependencies(dependencies);
 
     const assemblyModule = this.rubyModuleForAssembly(assembly.name);
-    const moduleParts = assemblyModule.split('::');
-    let currentModule = '';
-    for (const part of moduleParts) {
-      currentModule = currentModule ? `${currentModule}::${part}` : part;
-      this.code.line(`module ${currentModule}; end`);
+    for (const mod of helpers.modulePrefixes(assemblyModule)) {
+      this.code.line(`module ${mod}; end`);
     }
 
     this.code.open(`module ${assemblyModule}`);
@@ -611,44 +608,19 @@ export class RubyGenerator extends Generator {
       this.code.line('');
     }
 
-    const preDeclaredRubyModules = new Set<string>();
-    for (const dep of dependencies) {
-      const moduleName = this.rubyModuleForAssembly(dep);
-      let current = '';
-      for (const part of moduleName.split('::')) {
-        current = current ? `${current}::${part}` : part;
-        preDeclaredRubyModules.add(current);
-      }
-    }
-    for (const mod of Array.from(preDeclaredRubyModules).sort(
-      (a, b) => a.split('::').length - b.split('::').length,
-    )) {
+    const depModules = dependencies.map((dep) => this.rubyModuleForAssembly(dep));
+    for (const mod of helpers.namespacePrefixes(depModules)) {
       this.code.line(`module ${mod}; end`);
     }
   }
 
   private emitLocalNamespacePredeclarations(classRubyPaths: Set<string>): void {
-    const pureRubyNamespaces = new Set<string>();
+    const relNamespaces = this.reflectAssembly.allTypes
+      .filter((type) => type.namespace)
+      .map((type) => this.relativeRubyNamespace(type.fqn))
+      .filter((ns): ns is string => Boolean(ns));
 
-    for (const type of this.reflectAssembly.allTypes) {
-      if (!type.namespace) continue;
-
-      const relNamespace = this.relativeRubyNamespace(type.fqn);
-      if (!relNamespace) continue;
-
-      let current = '';
-      for (const part of relNamespace.split('::')) {
-        current = current ? `${current}::${part}` : part;
-        if (classRubyPaths.has(current)) continue;
-        pureRubyNamespaces.add(current);
-      }
-    }
-
-    const sortedNamespaces = Array.from(pureRubyNamespaces).sort(
-      (a, b) => a.split('::').length - b.split('::').length,
-    );
-
-    for (const ns of sortedNamespaces) {
+    for (const ns of helpers.namespacePrefixes(relNamespaces, classRubyPaths)) {
       this.code.line(`module ${ns}; end`);
     }
     this.code.line('');

@@ -13,7 +13,13 @@ import * as spec from '@jsii/spec';
 import * as fs from 'fs-extra';
 import * as reflect from 'jsii-reflect';
 
-import { dedupByRubyName, dedupCrossCategory, rubyConstName, rubyName } from './helpers';
+import {
+  dedupByRubyName,
+  dedupCrossCategory,
+  namespacePrefixes,
+  rubyConstName,
+  rubyName,
+} from './helpers';
 
 /**
  * The slice of the Ruby generator the RBS emitter depends on — only the
@@ -56,23 +62,16 @@ export async function generateRbs(
 
   // Predeclare every pure-namespace module fragment (every fqn prefix that
   // isn't itself a class path).
-  const namespaces = new Set<string>();
-  for (const type of sortedTypes) {
-    const parts = host.rubyFullTypeName(type.fqn).split('::');
-    let current = '';
-    for (let i = 0; i < parts.length - 1; i++) {
-      current = current ? `${current}::${parts[i]}` : parts[i];
-      if (!classPaths.has(current)) {
-        namespaces.add(current);
-      }
-    }
-  }
-  for (const ns of Array.from(namespaces).sort(
-    (a, b) => a.split('::').length - b.split('::').length,
-  )) {
+  // The enclosing namespace of each type, i.e. its Ruby path minus the type
+  // name itself.
+  const typeNamespaces = sortedTypes.map((type) =>
+    host.rubyFullTypeName(type.fqn).split('::').slice(0, -1).join('::'),
+  );
+  const namespaces = namespacePrefixes(typeNamespaces, classPaths);
+  for (const ns of namespaces) {
     lines.push(`module ${ns} end`);
   }
-  if (namespaces.size > 0) {
+  if (namespaces.length > 0) {
     lines.push('');
   }
 

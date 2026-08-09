@@ -10,6 +10,8 @@ import {
   rubyConstName,
   rubyJsonLiteral,
   rubyModuleName,
+  modulePrefixes,
+  namespacePrefixes,
   rubyCallParams,
   rubyName,
   rubySignatureParams,
@@ -261,5 +263,33 @@ describe('parameter rendering', () => {
   test('reserved names are escaped in both forms', () => {
     assert.equal(rubySignatureParams([{ name: 'class' }]), '_class');
     assert.equal(rubyCallParams([{ name: 'class' }]), '_class');
+  });
+});
+
+describe('module path prefixes', () => {
+  test('modulePrefixes walks a path from outermost to innermost', () => {
+    assert.deepEqual(modulePrefixes('A::B::C'), ['A', 'A::B', 'A::B::C']);
+    assert.deepEqual(modulePrefixes('Solo'), ['Solo']);
+    assert.deepEqual(modulePrefixes(''), []);
+  });
+
+  test('namespacePrefixes dedups across paths and orders shallowest first', () => {
+    assert.deepEqual(
+      namespacePrefixes(['A::B::C', 'A::D']),
+      ['A', 'A::B', 'A::D', 'A::B::C'],
+    );
+  });
+
+  test('namespacePrefixes preserves first-seen order within a depth', () => {
+    assert.deepEqual(namespacePrefixes(['Z::Q', 'A::Q']), ['Z', 'A', 'Z::Q', 'A::Q']);
+  });
+
+  test('excluded prefixes are skipped without pruning deeper ones', () => {
+    // A fragment that collides with a class name must not be re-declared as a
+    // module, but its children still need declaring.
+    assert.deepEqual(
+      namespacePrefixes(['A::B::C'], new Set(['A::B'])),
+      ['A', 'A::B::C'],
+    );
   });
 });
