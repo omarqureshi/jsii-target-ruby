@@ -49,7 +49,14 @@ npm run test:unit
 # Full compliance + runtime specs: regenerates jsii-calc via --plugin,
 # then runs RSpec against the generated bindings (requires Ruby >= 3.3)
 npm run test:compliance
+
+# Rebuild COMPLIANCE.md from that run and jsii's canonical suite
+npm run compliance:report -- <path-to-jsii-checkout>
 ```
+
+[COMPLIANCE.md](./COMPLIANCE.md) reports this target against jsii's standard
+compliance suite — the same one the other language bindings measure themselves
+against. It currently implements 123 of 123.
 
 The compliance fixtures upstream carry no `jsii.targets.ruby` configuration
 (external-language config never lands in an AWS repo), so `generate.sh` passes
