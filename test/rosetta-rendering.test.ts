@@ -134,6 +134,33 @@ describe('import aliases qualify type references', () => {
     assert.match(ruby, /AWSCDK::EC2::/);
   });
 
+  test('a selectively imported type is qualified', () => {
+    // `import { Bucket } from 'aws-cdk-lib/aws-s3'` binds the type name
+    // directly, so there is no alias in the reference at all — `Bucket.new`
+    // names nothing in Ruby.
+    const ruby = toRuby(
+      ["import { Bucket } from 'aws-cdk-lib/aws-s3';", "new Bucket(this, 'B');"].join('\n'),
+    );
+    assert.match(ruby, /AWSCDK::S3::Bucket/);
+  });
+
+  test('a renamed selective import is qualified under its local name', () => {
+    const ruby = toRuby(
+      ["import { Bucket as B } from 'aws-cdk-lib/aws-s3';", "new B(this, 'x');"].join('\n'),
+    );
+    assert.match(ruby, /AWSCDK::S3::Bucket/);
+  });
+
+  test('a selectively imported function is left alone', () => {
+    // Lowercase bindings are values, not types; qualifying them would produce
+    // a constant path for something that is not a constant.
+    const ruby = toRuby(
+      ["import { doThing } from '@scope/some-module';", 'doThing();'].join('\n'),
+    );
+    assert.match(ruby, /^\s*do_thing/m);
+    assert.ok(!/Scope::SomeModule::do_thing/.test(ruby), `function was qualified:\n${ruby}`);
+  });
+
   test('an unknown package still renders its alias, not a bogus prefix', () => {
     const ruby = toRuby(
       ["import * as other from 'some-other-lib';", "new other.Thing();"].join('\n'),

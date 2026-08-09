@@ -235,6 +235,13 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
    */
   private readonly importedModuleFqns = new Map<string, string>();
 
+  /**
+   * Local name -> the module it was selectively imported from, plus the name
+   * it has there (which a renamed import changes). Same lifetime and reason as
+   * {@link importedModuleFqns}.
+   */
+  private readonly importedTypeModules = new Map<string, { fqn: string; name: string }>();
+
   public constructor() {
     super();
   }
@@ -246,6 +253,7 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
   public override sourceFile(node: ts.SourceFile, context: RubyVisitorContext): OTree {
     this.emittedRequires.clear();
     this.importedModuleFqns.clear();
+    this.importedTypeModules.clear();
     return super.sourceFile(node, context);
   }
 
@@ -264,13 +272,25 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
    * namespace, so there is no alias to record.
    */
   private rememberImportedModule(node: ImportStatement, pkg: string, submodulePath: string[]): void {
-    if (node.imports.import !== 'full') {
+    const fqn = [pkg, ...submodulePath.map((seg) => seg.replace(/-/g, '_'))].join('.');
+
+    if (node.imports.import === 'full') {
+      for (const alias of [node.imports.sourceName, node.imports.alias]) {
+        if (alias) {
+          this.importedModuleFqns.set(alias, fqn);
+        }
+      }
       return;
     }
-    const fqn = [pkg, ...submodulePath.map((seg) => seg.replace(/-/g, '_'))].join('.');
-    for (const alias of [node.imports.sourceName, node.imports.alias]) {
-      if (alias) {
-        this.importedModuleFqns.set(alias, fqn);
+
+    // A selective import binds the name directly, so a reference carries no
+    // alias at all: record the local name against the module it came from.
+    // Only type-like (PascalCase) names are qualified at the reference site,
+    // so recording value bindings here is harmless.
+    for (const element of node.imports.elements) {
+      const local = element.alias ?? element.sourceName;
+      if (local) {
+        this.importedTypeModules.set(local, { fqn, name: element.sourceName });
       }
     }
   }
@@ -281,6 +301,17 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
   private rubyModuleForAlias(alias: string): string | undefined {
     const fqn = this.importedModuleFqns.get(alias);
     return fqn ? guessRubyModuleName(fqn) : undefined;
+  }
+
+  /**
+   * A bare type name as a Ruby constant path: qualified by the module it was
+   * selectively imported from when that is known, otherwise mapped on its own.
+   */
+  private rubyTypeReference(text: string): string {
+    const imported = this.importedTypeModules.get(text);
+    return imported
+      ? `${guessRubyModuleName(imported.fqn)}::${rubyModuleName(imported.name)}`
+      : rubyModuleName(text);
   }
 
   public override importStatement(node: ImportStatement, _context: RubyVisitorContext): OTree {
@@ -619,6 +650,10 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     const named = rubyNameOf(context, node);
     if (named) return named;
 
+    if (this.importedTypeModules.has(text)) {
+      return new OTree([this.rubyTypeReference(text)]);
+    }
+
     return new OTree([text]);
   }
 
@@ -635,7 +670,7 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     // the generic identifier path it would snake_case (`my_api.new`), which
     // references a local variable that does not exist.
     const target = ts.isIdentifier(node.expression)
-      ? new OTree([rubyModuleName(node.expression.text)])
+      ? new OTree([this.rubyTypeReference(node.expression.text)])
       : context.convert(node.expression);
     return new OTree([target, '.new', args], [], { canBreakLine: true });
   }

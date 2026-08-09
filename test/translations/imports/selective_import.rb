@@ -1,3 +1,3 @@
 require 'scope-some-module'
-Two.new
+Scope::SomeModule::Two.new
 renamed
