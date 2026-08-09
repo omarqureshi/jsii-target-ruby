@@ -17,7 +17,7 @@ module Jsii
       def method_missing(symbol, *args)
         return super(symbol, *args) unless valid_jsii_method_name?(symbol)
 
-        camel_name = Jsii::Utils.camelize(symbol)
+        camel_name = Jsii::Utils.jsii_member_name(symbol)
         fallback = -> { super(symbol, *args) }
 
         if camel_name.end_with?('=')

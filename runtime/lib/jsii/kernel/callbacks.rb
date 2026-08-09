@@ -23,7 +23,11 @@ module Jsii
             result: Jsii::Serializer.dump(result)
           }
         })
-      rescue StandardError => e
+      # Exception, not StandardError: NotImplementedError (the idiomatic
+      # abstract-method stub) descends from ScriptError, and letting it escape
+      # leaves the sidecar waiting for a `complete` reply that never comes,
+      # deadlocking every subsequent call on the process.
+      rescue Exception => e # rubocop:disable Lint/RescueException
         # Notify the kernel that this callback failed so it can unblock the
         # pending request.  Without this the Node sidecar waits forever for a
         # { complete } envelope and the original Ruby call deadlocks.

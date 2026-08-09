@@ -85,6 +85,10 @@ module Jsii
     alias eql? ==
 
     # @return [Integer] a hash code derived from {#to_jsii}, consistent with {#==}.
+    # Hash/Set membership uses eql? + hash; defining hash without eql? leaves
+    # equal structs as distinct Hash keys (the default eql? is identity).
+    alias eql? ==
+
     def hash
       to_jsii.hash
     end

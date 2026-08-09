@@ -34,7 +34,7 @@ module Jsii
       when Date, DateTime, Time
         dump_date(value)
       when Hash
-        value.transform_values { |element| dump(element) }
+        dump_hash(value)
       else
         dump_other(value)
       end
@@ -68,12 +68,31 @@ module Jsii
     def dump_date(value)
       case value
       when Time
-        { '$jsii.date' => value.utc.strftime('%Y-%m-%dT%H:%M:%S.%3NZ') }
+        # getutc, NOT utc: Time#utc converts the receiver in place, so
+        # serializing an argument would mutate the caller's object (and raise
+        # FrozenError on a frozen Time).
+        { '$jsii.date' => value.getutc.strftime('%Y-%m-%dT%H:%M:%S.%3NZ') }
       when DateTime
         { '$jsii.date' => value.new_offset(0).iso8601(3) }
       when Date
         { '$jsii.date' => DateTime.new(value.year, value.month, value.day).new_offset(0).iso8601(3) }
       end
+    end
+
+    # Encodes a Hash.  Maps whose keys would be mistaken for wire envelopes
+    # (`$jsii.byref`, `$jsii.date`, ...) are wrapped in the `$jsii.map`
+    # envelope the protocol defines for exactly this case — otherwise the
+    # sidecar decodes user data as a reference/date/enum.  {#load_hash} has
+    # always had the symmetric decode path.
+    #
+    # @api private
+    # @param value [Hash] the map to encode.
+    # @return [Hash] the encoded map, wrapped when disambiguation is needed.
+    def dump_hash(value)
+      encoded = value.each_with_object({}) { |(k, v), out| out[k] = dump(v) }
+      return encoded unless encoded.keys.any? { |k| k.to_s.start_with?('$jsii.') }
+
+      { '$jsii.map' => encoded }
     end
 
     # Fallback encoder for values that don't match the `dump` dispatch table:
@@ -112,7 +131,13 @@ module Jsii
       return Jsii::Object.jsii_deserialize(hash) if hash.key?('$jsii.byref')
       return Jsii::Enum.jsii_deserialize(hash) if hash.key?('$jsii.enum')
       return DateTime.parse(hash['$jsii.date']) if hash.key?('$jsii.date')
-      return load(hash['$jsii.map']) if hash.key?('$jsii.map')
+      # A `$jsii.map`'s KEYS are literal map keys — only its values are
+      # encoded.  Re-running `load` on the inner Hash would re-interpret those
+      # keys as envelopes, which is exactly the ambiguity the envelope exists
+      # to resolve.
+      if hash.key?('$jsii.map')
+        return hash['$jsii.map'].transform_values { |element| load(element) }.freeze
+      end
       return load_struct(hash['$jsii.struct']) if hash.key?('$jsii.struct')
 
       hash.transform_values { |element| load(element) }.freeze
