@@ -27,6 +27,28 @@ import {
 } from 'jsii-rosetta/lib/typescript/types';
 
 /**
+ * Whether a string literal is the final token on the line it will be rendered
+ * on — the only position where a heredoc body (which must begin on the next
+ * line) cannot swallow the rest of the expression.
+ */
+function endsItsLine(node: ts.Node): boolean {
+  const parent = node.parent;
+  if (!parent) {
+    return true;
+  }
+  if (ts.isVariableDeclaration(parent) || ts.isPropertyDeclaration(parent)) {
+    return parent.initializer === node;
+  }
+  if (ts.isBinaryExpression(parent) && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    return parent.right === node;
+  }
+  if (ts.isReturnStatement(parent) || ts.isExpressionStatement(parent)) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Whether the expression's (non-nullable) type is callable — i.e. this
  * expression evaluates to a function. Inlined from the fork's default.ts
  * (not exported by upstream jsii-rosetta).
@@ -410,6 +432,17 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     if (node.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword) {
       return new OTree([context.convert(node.left), '.is_a?(', context.convert(node.right), ')']);
     }
+
+    // Nullish coalescing is nil-specific: Ruby's `||` also replaces `false`
+    // and would silently change behaviour for boolean-valued expressions.
+    if (node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+      const left = context.convert(node.left);
+      return new OTree([left, '.nil? ? ', context.convert(node.right), ' : ', left]);
+    }
+    if (node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionEqualsToken) {
+      const target = context.convert(node.left);
+      return new OTree([target, ' = ', context.convert(node.right), ' if ', target, '.nil?']);
+    }
     const operator = this.translateBinaryOperator(context.textOf(node.operatorToken));
     return new OTree([context.convert(node.left), ' ', operator, ' ', context.convert(node.right)]);
   }
@@ -420,10 +453,9 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
         return '==';
       case '!==':
         return '!=';
-      case '??':
-        return '||';
-      case '??=':
-        return '||=';
+      // NB: `??` / `??=` are NOT handled here — `||` differs for `false` and
+      // is rewritten structurally in binaryExpression.
+
       default:
         return operator;
     }
@@ -533,7 +565,14 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
       node.arguments && node.arguments.length > 0
         ? new OTree(['('], context.convertAll(node.arguments), { separator: ', ', suffix: ')' })
         : new OTree([]);
-    return new OTree([context.convert(node.expression), '.new', args], [], { canBreakLine: true });
+    // A bare identifier in constructor position names a TYPE, so it renders
+    // with the type-name mapper — the same one classDeclaration uses. Left to
+    // the generic identifier path it would snake_case (`my_api.new`), which
+    // references a local variable that does not exist.
+    const target = ts.isIdentifier(node.expression)
+      ? new OTree([rubyModuleName(node.expression.text)])
+      : context.convert(node.expression);
+    return new OTree([target, '.new', args], [], { canBreakLine: true });
   }
 
   /**
@@ -830,10 +869,15 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     // preserving its initializer, rather than an instance attribute macro. Ruby constants must
     // begin with an uppercase letter.
     if (isStatic) {
+      // Reads of a static render as a class-method call — `C.MY_VALUE` for
+      // `static readonly` (constant casing, matching what pacmak generates
+      // for real jsii statics) and `C.foo` otherwise — so the declaration has
+      // to define exactly that method. Emitting a bare constant here left
+      // every read referencing something that was never defined.
       const rawName = node.name.getText();
-      const constName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+      const methodName = isReadonly ? rubyConstName(rawName) : toSnakeCase(rawName);
       const value = node.initializer ? context.convert(node.initializer) : new OTree(['nil']);
-      return new OTree([`${constName} = `, value], [], { canBreakLine: true });
+      return new OTree([`def self.${methodName} = `, value], [], { canBreakLine: true });
     }
 
     const attrMethod = isReadonly ? 'attr_reader' : 'attr_accessor';
@@ -913,7 +957,14 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
    * using standard JSON-serialized double-quotes.
    */
   private renderStringLiteral(node: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral): OTree {
-    if (node.text.includes('\n')) {
+    // A heredoc's body has to start on the line AFTER the opener, but the
+    // renderer emits it inline — so anything that follows the literal in the
+    // same expression lands after the terminator (`HERE, 42)`), which does
+    // not parse. Heredocs are therefore only safe where the literal is the
+    // last thing on its line: the value of an assignment, or a return.
+    // Everywhere else a quoted literal with escaped newlines is used, which
+    // is always valid.
+    if (node.text.includes('\n') && endsItsLine(node)) {
       const marker = 'HERE';
       let safeMarker = marker;
       let i = 0;
