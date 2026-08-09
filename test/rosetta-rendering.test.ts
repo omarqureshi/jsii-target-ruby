@@ -5,6 +5,7 @@ import { after, before, describe, test } from 'node:test';
 import { translateTypeScript } from 'jsii-rosetta/lib/translate';
 
 import { RubyVisitor } from '../src/rosetta/ruby-visitor';
+import { registerAssemblyTypes, resetTypeOracle } from '../src/type-oracle';
 
 /**
  * Rendering defects found by the max-effort review. These matter now that
@@ -108,9 +109,19 @@ describe('import aliases qualify type references', () => {
 
   before(() => {
     process.env.JSII_RUBY_TARGET_CONFIG = OVERLAY;
+    // The enum-vs-static distinction can only come from the assembly. Two
+    // types are enough to show both answers.
+    registerAssemblyTypes({
+      name: 'aws-cdk-lib',
+      types: {
+        'aws-cdk-lib.aws_lambda.Runtime': { kind: 'class' },
+        'aws-cdk-lib.aws_s3.BucketEncryption': { kind: 'enum' },
+      },
+    } as any);
   });
   after(() => {
     delete process.env.JSII_RUBY_TARGET_CONFIG;
+    resetTypeOracle();
   });
 
   test('a submodule import qualifies with the root module', () => {
@@ -192,6 +203,24 @@ describe('import aliases qualify type references', () => {
     // turn a value into a constant path.
     const ruby = toRuby('iam.someHelper();');
     assert.ok(!/AWSCDK::IAM/.test(ruby), `qualified a method call:\n${ruby}`);
+  });
+
+  test('a static readonly member is a method call, not a constant', () => {
+    // `def self.NODEJS_LATEST` is a method: `Runtime::NODEJS_LATEST` raises
+    // NameError. Enum members are the opposite — real constants needing `::`.
+    // In a snippet that does not typecheck both look identical (SCREAMING
+    // SNAKE after a PascalCase name), so the assembly has to be consulted.
+    const ruby = toRuby("new lambda.Function(this, 'F', { runtime: lambda.Runtime.NODEJS_LATEST });");
+    assert.match(ruby, /AWSCDK::Lambda::Runtime\.NODEJS_LATEST/);
+    assert.ok(
+      !/Runtime::NODEJS_LATEST/.test(ruby),
+      `static readonly rendered as a constant:\n${ruby}`,
+    );
+  });
+
+  test('an enum member is still a constant', () => {
+    const ruby = toRuby("new s3.Bucket(this, 'B', { encryption: s3.BucketEncryption.S3_MANAGED });");
+    assert.match(ruby, /AWSCDK::S3::BucketEncryption::S3_MANAGED/);
   });
 
   test('an unknown package still renders its alias, not a bogus prefix', () => {

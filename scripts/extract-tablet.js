@@ -27,6 +27,13 @@ async function main(argv) {
   // workers get it via pluginModules below.
   require('../lib/index.js');
 
+  // Workers never run the generator, so the assembly they are translating
+  // examples for has to reach them another way: without it a static readonly
+  // member renders as a constant and raises NameError when pasted.
+  process.env.JSII_RUBY_ORACLE_ASSEMBLIES = [assemblyDir, process.env.JSII_RUBY_ORACLE_ASSEMBLIES]
+    .filter(Boolean)
+    .join(require('path').delimiter);
+
   const { extractSnippets } = require('jsii-rosetta/lib/commands/extract');
   const pluginModule = require.resolve('../lib/index.js');
 

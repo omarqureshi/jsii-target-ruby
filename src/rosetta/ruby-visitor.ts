@@ -3,6 +3,7 @@ import * as ts from 'typescript';
 import { rubyGemName } from '../gemspec';
 import { resolveRubyModulePath, rubyConstName, rubyModuleName, rubyName, toPascalCase } from '../helpers';
 import { loadRubyTargetOverlay, rubyModuleForImportAlias } from '../target-config';
+import { rubyTypeKind } from '../type-oracle';
 import { DefaultVisitor } from 'jsii-rosetta/lib/languages/default';
 import { TargetLanguage } from 'jsii-rosetta/lib/languages/target-language';
 import { analyzeObjectLiteral, ObjectLiteralStruct } from 'jsii-rosetta/lib/jsii/jsii-types';
@@ -320,6 +321,19 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
   }
 
   /**
+   * The Ruby path an expression like `lambda.Runtime` names, or undefined if
+   * its head is not a module we can resolve.
+   */
+  private rubyPathOfExpression(text: string): string | undefined {
+    const [head, ...rest] = text.split('.');
+    const module = this.rubyModuleForAlias(head);
+    if (!module) {
+      return undefined;
+    }
+    return [module, ...rest.map((part) => this.rubyTypeNameIn(module, part))].join('::');
+  }
+
+  /**
    * A type name reached through a module alias, e.g. the `Role` of
    * `iam.Role`. Acronym casing comes from the owning assembly, so it matches
    * the constant the generator emits (`Vpc` -> `VPC`).
@@ -505,6 +519,19 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
         // aware); anything else can only be PascalCased as-is.
         const text = context.textOf(node.expression);
         exprNode = new OTree([this.rubyModuleForAlias(text) ?? rubyModuleName(text)]);
+      }
+
+      // A SCREAMING_SNAKE member is never a type: it is either an enum
+      // member (a real constant, `::`) or a static readonly property, which
+      // the generator emits as `def self.NAME` — reaching that with `::`
+      // raises NameError. Only the assembly can tell the two apart, and when
+      // it says nothing we keep `::`.
+      if (/^[A-Z][A-Z0-9_]*$/.test(nameText)) {
+        const ownerPath = this.rubyPathOfExpression(context.textOf(node.expression));
+        if (ownerPath && rubyTypeKind(ownerPath) === 'other') {
+          return new OTree([exprNode, '.', rubyConstName(nameText)]);
+        }
+        return new OTree([exprNode, '::', rubyConstName(nameText)]);
       }
 
       let nameNode = context.convert(node.name);

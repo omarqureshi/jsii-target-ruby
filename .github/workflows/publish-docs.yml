@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/rosetta-tablet
-          key: rosetta-ruby-tablet-${{ steps.install.outputs.version }}-${{ hashFiles('src/rosetta/**', 'config/cdk-targets.json') }}
+          key: rosetta-ruby-tablet-${{ steps.install.outputs.version }}-${{ hashFiles('src/**', 'config/cdk-targets.json') }}
           restore-keys: |
             rosetta-ruby-tablet-${{ steps.install.outputs.version }}-
             rosetta-ruby-tablet-

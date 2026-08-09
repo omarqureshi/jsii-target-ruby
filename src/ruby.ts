@@ -14,6 +14,7 @@ import { rubySq, rubyJsonLiteral } from './helpers';
 import { normalizeFences, rubifyInlineRefs } from './markdown';
 import { generateRbs } from './rbs';
 import { applyRubyTargetOverlay } from './target-config';
+import { registerAssemblyTypes } from './type-oracle';
 
 // This plugin's language key in rosetta's registry (see src/rosetta/register).
 // TargetLanguage is a closed enum upstream; an external language is a string
@@ -111,6 +112,14 @@ export class RubyGenerator extends Generator {
     // RubyTarget's constructor; the merge is idempotent and this covers
     // direct Generator use (tests, tooling).
     applyRubyTargetOverlay(assembly.spec);
+    // Lets example translation tell an enum from a class: a static readonly
+    // member is a class method, so rendering it as a constant raises
+    // NameError. Registered after the overlay so the indexed Ruby paths match
+    // what is generated.
+    registerAssemblyTypes(assembly.spec);
+    for (const dep of Object.values(assembly.spec.dependencyClosure ?? {})) {
+      registerAssemblyTypes(dep as any);
+    }
     this.packageRoot = packageRoot;
     return super.load(packageRoot, assembly);
   }
