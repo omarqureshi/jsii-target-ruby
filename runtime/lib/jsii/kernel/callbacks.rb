@@ -151,6 +151,14 @@ module Jsii
         jsii_interface_modules = value_ancestors(value)
         return value if jsii_interface_modules.empty?
 
+        # Already materialized: reuse the ref. Registering again would create a
+        # second remote object for the same Ruby instance, so the host would
+        # stop recognising it by identity ("is this the same generator?",
+        # "remove this listener", CDK aspect de-duplication) and every pass
+        # would leak another kernel object.
+        existing = value.instance_variable_get(:@jsii_ref)
+        return { '$jsii.byref' => existing } if existing
+
         overrides = extract_native_overrides(value, jsii_interface_modules)
         jsii_interfaces = jsii_interface_modules.map(&:jsii_fqn)
         ref = create_object('Object', [], overrides: overrides, interfaces: jsii_interfaces, instance: value)
@@ -192,16 +200,22 @@ module Jsii
       # @return [void]
       # @raise [RuntimeError] when a required (non-optional) member is missing.
       def validate_override!(value, interface, ruby_name, metadata, overrides)
-        unless value.class.method_defined?(ruby_name)
+        # `method_defined?` alone is vacuous here: the generated interface
+        # module defines a kernel-forwarding stub for every member, so simply
+        # including it satisfies the check. What distinguishes an actual
+        # implementation is its OWNER — user code, rather than a generated
+        # module (those answer to jsii_fqn).
+        owner = value.class.method_defined?(ruby_name) ? value.method(ruby_name).owner : nil
+        implemented = !owner.nil? && !owner.respond_to?(:jsii_fqn)
+
+        unless implemented
           return if metadata[:is_optional]
 
           raise "Object of class #{value.class} is missing required method/property: " \
                 "#{ruby_name} (from interface #{interface.name})"
         end
 
-        # If the owner is not a JSII generated class/module, it's a user override
-        owner = value.method(ruby_name).owner
-        overrides << { metadata[:kind].to_s => metadata[:name] } unless owner.respond_to?(:jsii_fqn)
+        overrides << { metadata[:kind].to_s => metadata[:name] }
       end
     end
   end
