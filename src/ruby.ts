@@ -835,25 +835,8 @@ export class RubyGenerator extends Generator {
         const callParams = helpers.rubyCallParams(method.parameters);
         this.emitMethodDocs(method, typeSpec.fqn);
         this.code.open(`def ${helpers.rubyName(method.name)}(${sigParams})`);
-        for (const p of method.parameters) {
-          const rubyParam = helpers.rubyName(p.name);
-          this.emitStructCoercion(rubyParam, p.type, {
-            variadic: p.variadic,
-          });
-          this.emitTypeChecking(rubyParam, p.type, p.name, {
-            isOptional: p.optional,
-            isVariadic: p.variadic,
-          });
-        }
-        if (method.async) {
-          this.code.line(
-            `jsii_async_call_method("${rubyDq(method.name)}", [${callParams}])`,
-          );
-        } else {
-          this.code.line(
-            `jsii_call_method("${rubyDq(method.name)}", [${callParams}])`,
-          );
-        }
+        this.emitParameterGuards(method.parameters);
+        this.emitInstanceDispatch(method, callParams);
         this.code.close('end');
         this.code.line('');
       }
@@ -958,13 +941,7 @@ export class RubyGenerator extends Generator {
         // static emission sites.
         this.emitStructCoercion(rubyParam, p.type, { variadic: p.variadic });
       }
-      const superArgs = initializer.parameters
-        .map((p) => {
-          const rubyParam = helpers.rubyName(p.name);
-          if (p.variadic) return `*${rubyParam}`;
-          return rubyParam;
-        })
-        .join(', ');
+      const superArgs = helpers.rubyCallParams(initializer.parameters);
 
       for (const p of initializer.parameters) {
         const rubyParam = helpers.rubyName(p.name);
@@ -1048,16 +1025,7 @@ export class RubyGenerator extends Generator {
 
       this.emitMethodDocs(method, typeSpec.fqn);
       this.code.open(`def self.${this.rubyMethodName(method)}(${sigParams})`);
-      for (const p of method.parameters) {
-        const rubyParam = helpers.rubyName(p.name);
-        this.emitStructCoercion(rubyParam, p.type, {
-          variadic: p.variadic,
-        });
-        this.emitTypeChecking(rubyParam, p.type, p.name, {
-          isOptional: p.optional,
-          isVariadic: p.variadic,
-        });
-      }
+      this.emitParameterGuards(method.parameters);
       this.code.line(
         `Jsii::Kernel.instance.call_static("${rubyDq(typeSpec.fqn)}", "${rubyDq(method.name)}", [${callParams}])`,
       );
@@ -1120,25 +1088,8 @@ export class RubyGenerator extends Generator {
 
       this.emitMethodDocs(method, typeSpec.fqn);
       this.code.open(`def ${this.rubyMethodName(method)}(${sigParams})`);
-      for (const p of method.parameters) {
-        const rubyParam = helpers.rubyName(p.name);
-        this.emitStructCoercion(rubyParam, p.type, {
-          variadic: p.variadic,
-        });
-        this.emitTypeChecking(rubyParam, p.type, p.name, {
-          isOptional: p.optional,
-          isVariadic: p.variadic,
-        });
-      }
-      if (method.async) {
-        this.code.line(
-          `jsii_async_call_method("${rubyDq(method.name)}", [${callParams}])`,
-        );
-      } else {
-        this.code.line(
-          `jsii_call_method("${rubyDq(method.name)}", [${callParams}])`,
-        );
-      }
+      this.emitParameterGuards(method.parameters);
+      this.emitInstanceDispatch(method, callParams);
       this.code.close('end');
       this.code.line('');
     }
@@ -1330,6 +1281,33 @@ export class RubyGenerator extends Generator {
   private structFromHashExpr(valueExpr: string, fqn: string): string {
     const structType = this.rubyFullTypeName(fqn);
     return `${valueExpr}.is_a?(Hash) ? ::${structType}.new(**${valueExpr}.transform_keys(&:to_sym)) : ${valueExpr}`;
+  }
+
+  /**
+   * Per-parameter struct coercion followed by its runtime type check.
+   *
+   * Methods emit these interleaved per parameter; the constructor does not
+   * (it coerces every parameter, then checks every parameter), so it does not
+   * share this.
+   */
+  private emitParameterGuards(params: readonly ParamLike[]): void {
+    for (const p of params) {
+      const rubyParam = helpers.rubyName(p.name);
+      this.emitStructCoercion(rubyParam, p.type, { variadic: p.variadic });
+      this.emitTypeChecking(rubyParam, p.type, p.name, {
+        isOptional: p.optional,
+        isVariadic: p.variadic,
+      });
+    }
+  }
+
+  /** The kernel call in an instance method body. */
+  private emitInstanceDispatch(
+    method: { name: string; async?: boolean },
+    callParams: string,
+  ): void {
+    const call = method.async ? 'jsii_async_call_method' : 'jsii_call_method';
+    this.code.line(`${call}("${rubyDq(method.name)}", [${callParams}])`);
   }
 
   private emitStructCoercion(

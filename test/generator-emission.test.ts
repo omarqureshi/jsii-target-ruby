@@ -100,6 +100,24 @@ describe('generator emission', () => {
     );
   });
 
+  test('constructor coerces every parameter before checking any of them', () => {
+    // The constructor emits its coercions and its type checks as two separate
+    // passes; methods interleave them per parameter. Folding the two shapes
+    // together would reorder the emitted lines.
+    const initializer = source.slice(
+      source.indexOf('def initialize'),
+      source.indexOf('def self.jsii_overridable_methods'),
+    );
+    const lastCoercion = initializer.lastIndexOf('.map! {');
+    const firstCheck = initializer.indexOf('Jsii::Type.check_type');
+    assert.notEqual(lastCoercion, -1, `no coercion in:\n${initializer}`);
+    assert.notEqual(firstCheck, -1, `no type check in:\n${initializer}`);
+    assert.ok(
+      lastCoercion < firstCheck,
+      `expected all coercions before any type check, got:\n${initializer}`,
+    );
+  });
+
   test('forwards the caller block so Jsii::Object#initialize can yield self', () => {
     assert.match(source, /def initialize\([^)]*&jsii_block\)/);
     assert.match(source, /instance_method\(:initialize\)\.bind\(self\)\.call\([^)]*&jsii_block\)/);

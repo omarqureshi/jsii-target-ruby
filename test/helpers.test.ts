@@ -10,6 +10,7 @@ import {
   rubyConstName,
   rubyJsonLiteral,
   rubyModuleName,
+  acronymRegExpCacheSize,
   modulePrefixes,
   namespacePrefixes,
   rubyCallParams,
@@ -207,17 +208,34 @@ describe('rubyModuleName performance', () => {
       'SAM', 'SES', 'SNS', 'SQS', 'SSL', 'SSM', 'TCP', 'TLS', 'UDP', 'URI',
       'URL', 'VPC', 'WAF',
     ];
-    const names = ['awsS3Bucket', 'vpcEndpoint', 'someLongServiceName', 'ec2Instance', 'kmsKey'];
+
+    // Acronyms unique to this test, so the shared cache's other entries do
+    // not skew the count. Only two of them appear in the names below.
+    const unique = acronyms.map((a) => `ZZ${a}`);
+    const present = ['ZZACM', 'ZZVPC'];
+    const matching = [`zzacmThing`, `zzvpcEndpoint`, 'someLongServiceName'];
+    const before = acronymRegExpCacheSize();
 
     const started = Date.now();
     for (let i = 0; i < 20_000; i++) {
-      rubyModuleName(names[i % names.length], acronyms);
+      rubyModuleName(matching[i % matching.length], unique);
     }
     const elapsed = Date.now() - started;
 
-    // Pre-fix this took ~420ms; the budget is deliberately loose so the test
-    // fails on a regression in kind, not on machine noise.
-    assert.ok(elapsed < 150, `20k conversions took ${elapsed}ms`);
+    // Two invariants, neither of them a stopwatch. One compiled RegExp per
+    // distinct acronym for the whole run rather than per call (which would be
+    // 20,000 x 53), and none at all for the 51 acronyms the lowercase
+    // pre-filter rules out before reaching the RegExp.
+    assert.equal(
+      acronymRegExpCacheSize() - before,
+      present.length,
+      'expected a compiled RegExp only for acronyms that actually occur',
+    );
+
+    // A loose backstop against a regression in kind. Pre-fix this took
+    // ~420ms and now takes ~100ms; 1s leaves enough headroom that machine
+    // noise cannot trip it, which the old 150ms budget did not.
+    assert.ok(elapsed < 1_000, `20k conversions took ${elapsed}ms`);
   });
 
   test('caching does not change results', () => {

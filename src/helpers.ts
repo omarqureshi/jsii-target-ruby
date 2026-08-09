@@ -221,6 +221,16 @@ export function assemblyAcronyms(config: { targets?: { ruby?: { acronyms?: unkno
  * `lastIndex` is reset by callers before use, since `g` regexes are stateful.
  */
 const ACRONYM_REGEXPS = new Map<string, RegExp>();
+
+/**
+ * How many acronym RegExps have been compiled so far. Test hook: the cache
+ * exists so that generation compiles one RegExp per distinct acronym for the
+ * whole run rather than one per acronym per call, and that is an invariant a
+ * test can assert without timing anything.
+ */
+export function acronymRegExpCacheSize(): number {
+  return ACRONYM_REGEXPS.size;
+}
 function acronymRegExp(acronym: string): RegExp {
   let regex = ACRONYM_REGEXPS.get(acronym);
   if (regex === undefined) {
