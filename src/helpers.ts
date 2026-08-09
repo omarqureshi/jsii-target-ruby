@@ -372,3 +372,49 @@ export function dedupByRubyName<T extends MemberLike>(
   }
   return out;
 }
+
+/**
+ * The data a module-path resolution needs about one assembly. Implemented
+ * over an assembly spec by the generator, over jsii-rosetta symbol metadata
+ * or the target-config overlay by the rosetta visitor.
+ */
+export interface ModuleNameProvider {
+  readonly assemblyName: string;
+  readonly acronyms: string[];
+  /** Explicit `targets.ruby.module` of the assembly root, if declared. */
+  rootModule(): string | undefined;
+  /** Explicit `targets.ruby.module` of a submodule fqn, if declared. */
+  submoduleModule(fqn: string): string | undefined;
+}
+
+/**
+ * THE fqn -> Ruby module path walk, shared by the code generator, the RBS
+ * emission (through the generator) and the rosetta visitor so type names in
+ * code, signatures and docs examples agree by construction: the deepest
+ * explicitly-configured prefix wins, every segment below it derives via
+ * `rubyModuleName` with the owning assembly's acronyms.
+ */
+export function resolveRubyModulePath(fqn: string, provider: ModuleNameProvider): string {
+  const segments = fqn.split('.');
+  const assemblyModule = provider.rootModule() ?? rubyModuleName(provider.assemblyName, provider.acronyms);
+  const result: string[] = [];
+
+  for (let len = segments.length; len > 0; len--) {
+    const submoduleFqn = segments.slice(0, len).join('.');
+
+    if (submoduleFqn === provider.assemblyName) {
+      result.unshift(assemblyModule);
+      break;
+    }
+
+    const explicitModule = provider.submoduleModule(submoduleFqn);
+    if (explicitModule) {
+      result.unshift(explicitModule);
+      break;
+    }
+
+    result.unshift(rubyModuleName(segments[len - 1], provider.acronyms));
+  }
+
+  return result.join('::');
+}

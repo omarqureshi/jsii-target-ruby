@@ -17,6 +17,11 @@ import { RubyVisitor } from '../src/rosetta/ruby-visitor';
 // mirroring the corpus' relative layout under test/translations/.
 const EXPECTATIONS = path.resolve(__dirname, '..', '..', 'test', 'translations');
 
+// The visitor resolves unresolvable type references against the target-config
+// overlay (as the docs pipeline does in production) — run the corpus the same
+// way so namespaces in expectations match deployed behavior.
+process.env.JSII_RUBY_TARGET_CONFIG = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+
 // Snippets not (yet) in the upstream corpus: full .ts + .rb pairs, candidates
 // for upstreaming. Expectations sit next to the snippets.
 const LOCAL_CORPUS = path.resolve(__dirname, '..', '..', 'test', 'translations-local');

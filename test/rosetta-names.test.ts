@@ -1,5 +1,6 @@
 import * as assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import * as path from 'node:path';
+import { after, before, describe, test } from 'node:test';
 
 import { guessRubyModuleName, rubyModuleName, toSnakeCase } from '../src/rosetta/ruby-visitor';
 
@@ -90,16 +91,25 @@ describe('rubyModuleName', () => {
 });
 
 describe('guessRubyModuleName', () => {
+  // Unresolved references resolve against the target-config overlay — the
+  // same naming data generation uses. The CDK names below come from
+  // config/cdk-targets.json, not from code.
+  const OVERLAY = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+  before(() => {
+    process.env.JSII_RUBY_TARGET_CONFIG = OVERLAY;
+  });
+  after(() => {
+    delete process.env.JSII_RUBY_TARGET_CONFIG;
+  });
+
   const cases: Array<[string, string]> = [
-    // The core CDK library's explicit .jsiirc.json naming is mirrored: AWSCDK root,
-    // redundant service-level `aws` prefix dropped from submodules.
     ['aws-cdk-lib', 'AWSCDK'],
     ['aws-cdk-lib.aws_s3', 'AWSCDK::S3'],
-    // Without an assembly there is no acronym config, so multi-letter service
-    // names get plain PascalCase — an honest guess, not fake authority.
-    ['aws-cdk-lib.aws_ec2', 'AWSCDK::Ec2'],
+    // The overlay knows the real casing — the old hardcoded guess said Ec2.
+    ['aws-cdk-lib.aws_ec2', 'AWSCDK::EC2'],
     ['aws-cdk-lib.pipelines', 'AWSCDK::Pipelines'],
-    // Non-CDK assemblies follow the default naming rules, with submodules nested via `::`.
+    // Assemblies without an overlay entry derive generically, with
+    // submodules nested via `::`.
     ['jsii-calc', 'JsiiCalc'],
     ['jsii-calc.submodule', 'JsiiCalc::Submodule'],
   ];

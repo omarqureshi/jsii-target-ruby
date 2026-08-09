@@ -32,10 +32,20 @@ export interface RubyTargetEntry {
 
 export type RubyTargetOverlay = Record<string, RubyTargetEntry>;
 
+// Cached per file path: the rosetta visitor consults the overlay on every
+// unresolved type reference, which would otherwise re-read the file per call.
+// Keying by path keeps tests (which point the env var at fresh temp files)
+// correct without an explicit reset hook.
+const overlayCache = new Map<string, RubyTargetOverlay>();
+
 export function loadRubyTargetOverlay(): RubyTargetOverlay | undefined {
   const file = process.env[TARGET_CONFIG_ENV];
   if (!file) {
     return undefined;
+  }
+  const cached = overlayCache.get(file);
+  if (cached) {
+    return cached;
   }
   const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
   const overlay: RubyTargetOverlay = {};
@@ -44,6 +54,7 @@ export function loadRubyTargetOverlay(): RubyTargetOverlay | undefined {
       overlay[key] = value as RubyTargetEntry;
     }
   }
+  overlayCache.set(file, overlay);
   return overlay;
 }
 

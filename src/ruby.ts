@@ -10,6 +10,7 @@ import { subprocess } from 'jsii-pacmak/lib/util';
 import { generateGemspec, rubyGemName } from './gemspec';
 import * as helpers from './helpers';
 import { rubySq, rubyJsonLiteral } from './helpers';
+import { normalizeFences, rubifyInlineRefs } from './markdown';
 import { generateRbs } from './rbs';
 import { applyRubyTargetOverlay } from './target-config';
 
@@ -80,26 +81,6 @@ interface ParamLike {
 
 
 
-// A `require` / `require_relative` line in a rendered example. After import translation,
-// several imports from one package collapse to duplicate `require 'aws-cdk-lib'` lines;
-// these are de-duplicated before display so each require appears once.
-const REQUIRE_LINE = /^\s*require(?:_relative)?\s+['"][^'"]+['"];?\s*$/;
-
-/**
- * Some source READMEs put the first line of a fenced block onto the fence-open line —
- * e.g. an ASCII diagram: "```text                 +---". CommonMark (what GitHub uses)
- * treats everything after the ``` as the info string and opens the fence anyway, but
- * redcarpet — which YARD uses so it can highlight the fenced blocks — treats the whole
- * thing as a paragraph and prints the ``` literally. Split that trailing content onto
- * its own line so the fence opens (and, unlike GitHub, the first line is preserved).
- */
-function normalizeFences(markdown: string): string {
-  return markdown.replace(
-    /^([ \t]*`{3,}[ \t]*[\w.+#-]*)([ \t]{2,}\S.*)$/gm,
-    '$1\n$2',
-  );
-}
-
 
 export class RubyGenerator extends Generator {
   public constructor(
@@ -151,7 +132,7 @@ export class RubyGenerator extends Generator {
     // Fenced code blocks stay TypeScript until the rosetta plugin phase (see
     // convertExample); inline code refs in prose are still rubified, since
     // that transformation is rosetta-independent.
-    return this.rubifyInlineRefs(cleaned);
+    return rubifyInlineRefs(cleaned);
   }
 
   /**
@@ -164,46 +145,6 @@ export class RubyGenerator extends Generator {
    * (already translated), and anything that isn't a bare identifier — ARNs, URLs and
    * names (they carry `:` `/` `-` `.`), PascalCase type names, ALL_CAPS enum members.
    */
-  private rubifyInlineRefs(markdown: string): string {
-    let inFence = false;
-    let seenRequires = new Set<string>();
-    const out: string[] = [];
-    for (const line of markdown.split('\n')) {
-      if (/^\s*(```|~~~)/.test(line)) {
-        inFence = !inFence;
-        seenRequires = new Set(); // de-dup requires within each code block
-        out.push(line);
-        continue;
-      }
-      if (inFence) {
-        // Collapse duplicate `require` lines (e.g. several imports that all map to
-        // `require 'aws-cdk-lib'`) to a single one.
-        if (REQUIRE_LINE.test(line)) {
-          const key = line.trim();
-          if (seenRequires.has(key)) {
-            continue;
-          }
-          seenRequires.add(key);
-        }
-        out.push(line);
-        continue;
-      }
-      out.push(
-        line.replace(/`([^`\n]+)`/g, (whole, inner: string) => {
-          const m = /^([a-z][A-Za-z0-9]*)(\([A-Za-z0-9_,\s]*\))?$/.exec(inner);
-          if (!m || !/[A-Z]/.test(m[1])) {
-            return whole;
-          }
-          const call = m[2]
-            ? m[2].replace(/[A-Za-z][A-Za-z0-9]*/g, (arg) => toSnakeCase(arg))
-            : '';
-          return `\`${toSnakeCase(m[1])}${call}\``;
-        }),
-      );
-    }
-    return out.join('\n');
-  }
-
   /**
    * Normalize a type reference to its raw `spec.TypeReference` shape.
    * Call sites hold two shapes: jsii-reflect `TypeReference` instances
@@ -1275,50 +1216,22 @@ export class RubyGenerator extends Generator {
   public rubyFullTypeName(fqn: string): string {
     if (fqn === 'any') return 'Object';
 
-    const segments = fqn.split('.');
-    const assemblyName = segments[0];
+    const assemblyName = fqn.split('.')[0];
     const config =
       assemblyName === this.assembly.name
         ? this.assembly
         : this.assembly.dependencyClosure?.[assemblyName];
 
-    if (!config) {
-      // Unknown assembly: no acronym configuration is available for it.
-      const assemblyModule = this.rubyModuleName(assemblyName, []);
-      return [
-        assemblyModule,
-        ...segments.slice(1).map((p) => this.rubyModuleName(p, [])),
-      ].join('::');
-    }
-
     // Names in this fqn belong to `config`'s assembly — apply *its*
-    // acronym configuration, not the pooled closure's.
-    const acronyms = helpers.assemblyAcronyms(config);
-    const assemblyModule =
-      config.targets?.ruby?.module ??
-      this.rubyModuleName(assemblyName, acronyms);
-    const result = [];
-
-    for (let len = segments.length; len > 0; len--) {
-      const submoduleFqn = segments.slice(0, len).join('.');
-
-      if (submoduleFqn === assemblyName) {
-        result.unshift(assemblyModule);
-        break;
-      }
-
-      const submoduleConfig = config.submodules?.[submoduleFqn];
-      const explicitModule = submoduleConfig?.targets?.ruby?.module;
-
-      if (explicitModule) {
-        result.unshift(explicitModule);
-        break;
-      }
-
-      result.unshift(this.rubyModuleName(segments[len - 1], acronyms));
-    }
-
-    return result.join('::');
+    // acronym configuration, not the pooled closure's. An unknown assembly
+    // has no configuration at all: every segment derives plainly.
+    return helpers.resolveRubyModulePath(fqn, {
+      assemblyName,
+      acronyms: config ? helpers.assemblyAcronyms(config) : [],
+      rootModule: () => config?.targets?.ruby?.module,
+      submoduleModule: (submoduleFqn) =>
+        config?.submodules?.[submoduleFqn]?.targets?.ruby?.module,
+    });
   }
 
   /**

@@ -1,6 +1,8 @@
 import * as ts from 'typescript';
 
-import { rubyConstName, rubyModuleName, rubyName, toPascalCase } from '../helpers';
+import { rubyGemName } from '../gemspec';
+import { resolveRubyModulePath, rubyConstName, rubyModuleName, rubyName, toPascalCase } from '../helpers';
+import { loadRubyTargetOverlay } from '../target-config';
 import { DefaultVisitor } from 'jsii-rosetta/lib/languages/default';
 import { TargetLanguage } from 'jsii-rosetta/lib/languages/target-language';
 import { analyzeObjectLiteral, ObjectLiteralStruct } from 'jsii-rosetta/lib/jsii/jsii-types';
@@ -10,7 +12,6 @@ import {
   isJsiiProtocolType,
   JsiiSymbol,
   simpleName,
-  namespaceName,
 } from 'jsii-rosetta/lib/jsii/jsii-utils';
 import { jsiiTargetParameter } from 'jsii-rosetta/lib/jsii/packages';
 import { NO_SYNTAX, OTree } from 'jsii-rosetta/lib/o-tree';
@@ -94,24 +95,22 @@ export function toSnakeCase(camel: string) {
 export { rubyModuleName } from '../helpers';
 
 /**
- * Best-effort Ruby module name for a jsii module FQN (e.g. `aws-cdk-lib.aws_s3`) when no
- * assembly is loaded. The core CDK library configures its Ruby names explicitly in
- * `.jsiirc.json` (`aws-cdk-lib` -> `AWSCDK`, `aws-s3` -> `S3`, dropping the redundant
- * service-level `aws` prefix); that config is unavailable without the assemblies, so the
- * dominant case is mirrored here to keep snippet namespaces aligned with the compiled gems.
- *
- * NOTE: this special-casing is the one remaining piece of CDK-specific knowledge in this
- * visitor, and it only affects snippets whose type references cannot be resolved to an
- * assembly at all. The structural fix is for callers (which hold the assembly) to supply
- * naming config for unresolved references; until that API exists, this guess keeps
- * non-compiling README snippets readable.
+ * Ruby module name for a jsii module FQN (e.g. `aws-cdk-lib.aws_s3`) when no assembly is
+ * loaded: resolved against the target-config overlay (JSII_RUBY_TARGET_CONFIG) — the SAME
+ * naming data generation uses — so snippet namespaces align with the compiled gems by
+ * construction (`AWSCDK::S3` comes from config/cdk-targets.json, not from code). Without
+ * an overlay entry the name derives generically, exactly as the generator would for an
+ * unconfigured assembly. This removed the visitor's last piece of CDK-specific knowledge.
  */
 export function guessRubyModuleName(fqn: string): string {
-  const [packageName, ...submodulePath] = fqn.split('.');
-  const isCoreCdk = packageName === 'aws-cdk-lib';
-  const root = isCoreCdk ? 'AWSCDK' : rubyModuleName(packageName);
-  const segments = submodulePath.map((s) => rubyModuleName(isCoreCdk ? s.replace(/^aws[-_]/, '') : s));
-  return [root, ...segments].join('::');
+  const packageName = fqn.split('.')[0];
+  const entry = loadRubyTargetOverlay()?.[packageName];
+  return resolveRubyModulePath(fqn, {
+    assemblyName: packageName,
+    acronyms: (entry?.acronyms as string[] | undefined) ?? [],
+    rootModule: () => entry?.module,
+    submoduleModule: (submoduleFqn) => entry?.submodules?.[submoduleFqn]?.module,
+  });
 }
 
 /**
@@ -127,28 +126,16 @@ function findRubyName(jsiiSymbol: JsiiSymbol): string | undefined {
 
   const asm = jsiiSymbol.sourceAssembly.assembly;
 
-  // Collect acronyms from the assembly targets
-  const acronyms: string[] = asm.targets?.ruby?.acronyms ?? [];
-
-  return recurse(jsiiSymbol.fqn);
-
-  function recurse(fqn: string): string {
-    const baseFqn = fqn.split('#')[0];
-    if (baseFqn === asm.name) {
-      return jsiiTargetParameter(asm, 'ruby.module') ?? rubyModuleName(baseFqn, acronyms);
-    }
-    if (asm.submodules?.[baseFqn]) {
-      const modName = jsiiTargetParameter(asm.submodules[baseFqn], 'ruby.module');
-      if (modName) {
-        return modName;
-      }
-    }
-
-    const ns = namespaceName(baseFqn);
-    const nsRubyName = recurse(ns);
-    const leaf = simpleName(baseFqn);
-    return `${nsRubyName}::${rubyModuleName(leaf, acronyms)}`;
-  }
+  // The same walk the generator uses (deepest explicit prefix wins, the
+  // rest derives with the owning assembly's acronyms), fed from rosetta's
+  // assembly metadata.
+  return resolveRubyModulePath(jsiiSymbol.fqn.split('#')[0], {
+    assemblyName: asm.name,
+    acronyms: (asm.targets?.ruby?.acronyms as string[] | undefined) ?? [],
+    rootModule: () => jsiiTargetParameter(asm, 'ruby.module'),
+    submoduleModule: (submoduleFqn) =>
+      asm.submodules?.[submoduleFqn] ? jsiiTargetParameter(asm.submodules[submoduleFqn], 'ruby.module') : undefined,
+  });
 }
 
 /**
@@ -217,10 +204,15 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     // gem is the npm *package* — the submodule is autoloaded from it, there is no
     // per-submodule require. Keep the package name only: two segments for a scoped
     // package (`@scope/name`), one otherwise. So `aws-cdk-lib/aws-s3tables` -> the
-    // `aws-cdk-lib` gem, not the non-existent `aws-cdk-lib-aws-s3tables`.
+    // `aws-cdk-lib` gem, not the non-existent `aws-cdk-lib-aws-s3tables`. The gem
+    // name itself comes from the generator's mapper, overlay-aware — a library
+    // that declares a custom gem name gets correct requires in its docs.
     const parts = node.packageName.split('/');
     const pkg = node.packageName.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
-    const gemName = pkg.replace(/^@/, '').replace(/\//g, '-');
+    const gemName = rubyGemName({
+      name: pkg,
+      targets: loadRubyTargetOverlay()?.[pkg]?.gem !== undefined ? ({ ruby: { gem: loadRubyTargetOverlay()![pkg].gem } } as any) : undefined,
+    });
     return this.renderRequire(`require '${gemName}'`);
   }
 
