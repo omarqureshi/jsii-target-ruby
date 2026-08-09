@@ -1,4 +1,6 @@
 import * as ts from 'typescript';
+
+import { rubyConstName, rubyModuleName, rubyName, toPascalCase } from '../helpers';
 import { DefaultVisitor } from 'jsii-rosetta/lib/languages/default';
 import { TargetLanguage } from 'jsii-rosetta/lib/languages/target-language';
 import { analyzeObjectLiteral, ObjectLiteralStruct } from 'jsii-rosetta/lib/jsii/jsii-types';
@@ -31,56 +33,6 @@ import {
 function isExpressionOfFunctionType(typeChecker: ts.TypeChecker, expr: ts.Expression) {
   const type = typeChecker.getTypeAtLocation(expr).getNonNullableType();
   return type.getCallSignatures().length > 0;
-}
-
-// Ruby keywords and standard reserved names. Since Rosetta translates code snippets
-// directly without dynamic target configurations, we use this hardcoded set to escape
-// identifiers (e.g. by prefixing with an underscore) to avoid syntax errors in the output.
-const RUBY_RESERVED_NAMES = new Set([
-  'BEGIN',
-  'END',
-  'alias',
-  'and',
-  'begin',
-  'break',
-  'case',
-  'class',
-  'def',
-  'defined?',
-  'do',
-  'else',
-  'elsif',
-  'end',
-  'ensure',
-  'false',
-  'for',
-  'if',
-  'in',
-  'module',
-  'next',
-  'nil',
-  'not',
-  'or',
-  'redo',
-  'rescue',
-  'retry',
-  'return',
-  'self',
-  'super',
-  'then',
-  'true',
-  'undef',
-  'unless',
-  'until',
-  'when',
-  'while',
-  'yield',
-  'send',
-  '__send__',
-]);
-
-function toPascalCase(str: string) {
-  return str.replace(/(^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_, _sep, char) => char.toUpperCase());
 }
 
 /**
@@ -122,11 +74,10 @@ export function toSnakeCase(camel: string) {
     // Looks like PascalCase, probably a class name, don't snake_case
     return camel;
   }
-  const snake = camel
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
-    .toLowerCase();
-  return RUBY_RESERVED_NAMES.has(snake) ? `_${snake}` : snake;
+  // Member position: the generator's own mapper, so example code always
+  // names the members the generated bindings actually define (reserved
+  // words, the runtime machinery, the jsii_ namespace, digit-leading).
+  return rubyName(camel);
 }
 
 /**
@@ -140,39 +91,7 @@ export function toSnakeCase(camel: string) {
  *   rosetta deliberately carries no built-in list — a snippet translated
  *   without assembly info simply gets plain PascalCase.
  */
-export function rubyModuleName(name: string, acronyms: string[] = []): string {
-  if (name.startsWith('@')) {
-    const parts = name.slice(1).split('/');
-    return parts.map((p) => rubyModuleName(p, acronyms)).join('::');
-  }
-  if (name.includes('-')) {
-    const parts = name.split('-');
-    return parts.map((p) => rubyModuleName(p, acronyms)).join('');
-  }
-  const sanitized = name.replace(/[^a-zA-Z0-9_]/g, '');
-  let pascal = sanitized.charAt(0) === sanitized.charAt(0).toUpperCase() ? sanitized : toPascalCase(sanitized);
-
-  const allAcronyms = [...new Set(acronyms)];
-  // Restore uppercase casing to the caller-declared acronyms in the PascalCase string.
-  // We use word-boundary and next-character checks to avoid uppercase conversion inside unrelated
-  // words (e.g., capitalizing 'SI' inside 'Simple').
-  for (const acronym of allAcronyms) {
-    const regex = new RegExp(`(${acronym})`, 'ig');
-    pascal = pascal.replace(regex, (match, _p1, offset) => {
-      if (match[0] !== match[0].toUpperCase()) return match;
-      const nextChar = pascal[offset + match.length];
-      if (nextChar) {
-        const isValid =
-          /^[A-Z0-9]$/.test(nextChar) ||
-          (nextChar === 's' &&
-            (!pascal[offset + match.length + 1] || /^[A-Z0-9]$/.test(pascal[offset + match.length + 1])));
-        if (!isValid) return match;
-      }
-      return acronym;
-    });
-  }
-  return pascal;
-}
+export { rubyModuleName } from '../helpers';
 
 /**
  * Best-effort Ruby module name for a jsii module FQN (e.g. `aws-cdk-lib.aws_s3`) when no
@@ -431,7 +350,7 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     }
 
     if (isEnumAccess(context.typeChecker, node)) {
-      return new OTree([context.convert(node.expression), '::', toSnakeCase(node.name.text).toUpperCase()]);
+      return new OTree([context.convert(node.expression), '::', rubyConstName(node.name.text)]);
     }
 
     // Static readonly (const) property access — the "enum-like class" pattern
@@ -441,7 +360,7 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     // Without this, the access falls into the type-reference branch below and the
     // member is dropped, leaving just `AWSCDK::S3::BlockPublicAccess`.
     if (isStaticReadonlyAccess(context.typeChecker, node)) {
-      return new OTree([context.convert(node.expression), '.', toSnakeCase(node.name.text).toUpperCase()]);
+      return new OTree([context.convert(node.expression), '.', rubyConstName(node.name.text)]);
     }
 
     const nameText = node.name.text;
