@@ -73,7 +73,10 @@ jobs:
           # --rosetta-unknown-snippets=translate: without it rosetta returns
           # snippets verbatim while still labelling the fence with the target
           # language, so docs would claim Ruby and show TypeScript.
-          node "${GITHUB_WORKSPACE}/toolchain/jsii/packages/jsii-pacmak/bin/jsii-pacmak" \
+          # --max-old-space-size: translating every aws-cdk-lib example holds a
+          # ~6GB working set, above node's ~4GB default cap. build-cdk does the
+          # same work in 10 minutes with this flag; without it this step took 77.
+          node --max-old-space-size=8192 "${GITHUB_WORKSPACE}/toolchain/jsii/packages/jsii-pacmak/bin/jsii-pacmak" \
             --plugin "${GITHUB_WORKSPACE}" \
             -t ruby --code-only --force-target \
             --rosetta-unknown-snippets=translate \
