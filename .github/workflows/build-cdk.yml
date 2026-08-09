@@ -53,6 +53,7 @@ jobs:
         uses: ./.github/actions/bootstrap-toolchain
 
       - name: Install aws-cdk-lib@${{ inputs.aws-cdk-lib-version }} (published artifacts)
+        id: install
         working-directory: ${{ runner.temp }}
         run: |
           mkdir -p cdk-build && cd cdk-build
@@ -60,9 +61,39 @@ jobs:
           npm install --save "aws-cdk-lib@${{ inputs.aws-cdk-lib-version }}" @jsii/runtime
           node -p "require('aws-cdk-lib/package.json').version" > VERSION
           echo "aws-cdk-lib $(cat VERSION)"
+          echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Naming-sync check (new submodules need a deliberate decision)
         run: node scripts/check-cdk-naming.js "${{ runner.temp }}/cdk-build/node_modules/aws-cdk-lib"
+
+      # Shares the tablet with publish-docs: the translations are the same work,
+      # and whichever workflow runs first pays for them.
+      - name: Restore translation tablet
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/rosetta-tablet
+          key: rosetta-ruby-tablet-${{ steps.install.outputs.version }}-${{ hashFiles('src/rosetta/**', 'config/cdk-targets.json') }}
+          restore-keys: |
+            rosetta-ruby-tablet-${{ steps.install.outputs.version }}-
+            rosetta-ruby-tablet-
+
+      - name: Extract Ruby translations
+        env:
+          JSII_RUBY_TARGET_CONFIG: ${{ github.workspace }}/config/cdk-targets.json
+          # Rosetta defaults to half the cores as workers; measured at ~3GB
+          # each, which overruns a 16GB runner. Cap it: the extract is bounded
+          # by memory here, not by cores.
+          JSII_ROSETTA_MAX_WORKER_COUNT: '3'
+        run: |
+          cache_dir="${{ runner.temp }}/rosetta-tablet"
+          mkdir -p "$cache_dir"
+          cached="$cache_dir/ruby.tabl.json"
+          node --max-old-space-size=8192 scripts/extract-tablet.js \
+            "${{ runner.temp }}/cdk-build/node_modules/aws-cdk-lib" \
+            "$cache_dir/next.tabl.json" \
+            $([ -f "$cached" ] && echo "$cached")
+          mv "$cache_dir/next.tabl.json" "$cached"
+          echo "TABLET=$cached" >> "$GITHUB_ENV"
 
       - name: Generate and build gems (single --recurse over the installed closure)
         env:
@@ -84,6 +115,7 @@ jobs:
           node --max-old-space-size=8192 toolchain/jsii/packages/jsii-pacmak/bin/jsii-pacmak \
             --plugin "$(pwd)" \
             -t ruby --force-target --recurse \
+            --rosetta-tablet "$TABLET" \
             --rosetta-unknown-snippets=translate \
             -o "${workdir}/dist" "${workdir}/node_modules/aws-cdk-lib"
           (cd runtime && gem build jsii-ruby-runtime.gemspec && mv jsii-ruby-runtime-*.gem "${workdir}/dist/ruby/")

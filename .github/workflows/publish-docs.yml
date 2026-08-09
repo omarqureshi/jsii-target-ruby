@@ -62,23 +62,61 @@ jobs:
       - name: Install YARD + redcarpet + rouge
         run: gem install yard redcarpet rouge --no-document
 
-      - name: Generate aws-cdk-lib Ruby sources
-        env:
-          JSII_RUBY_TARGET_CONFIG: ${{ github.workspace }}/config/cdk-targets.json
+      - name: Install aws-cdk-lib
+        id: install
         run: |
           workdir="${{ runner.temp }}/docs-build"
           mkdir -p "$workdir" && cd "$workdir"
           npm init -y > /dev/null
           npm install --save "aws-cdk-lib@${{ inputs.aws-cdk-lib-version || 'latest' }}"
-          # --rosetta-unknown-snippets=translate: without it rosetta returns
-          # snippets verbatim while still labelling the fence with the target
-          # language, so docs would claim Ruby and show TypeScript.
-          # --max-old-space-size: translating every aws-cdk-lib example holds a
-          # ~6GB working set, above node's ~4GB default cap. build-cdk does the
-          # same work in 10 minutes with this flag; without it this step took 77.
+          echo "version=$(node -p "require('$workdir/node_modules/aws-cdk-lib/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # Translating every aws-cdk-lib example takes over an hour. The tablet
+      # makes that a one-off: rosetta reuses cached translations and only
+      # retranslates snippets whose source or translator version changed, so a
+      # rebuild of an unchanged library does no translation at all.
+      - name: Restore translation tablet
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/rosetta-tablet
+          key: rosetta-ruby-tablet-${{ steps.install.outputs.version }}-${{ hashFiles('src/rosetta/**', 'config/cdk-targets.json') }}
+          restore-keys: |
+            rosetta-ruby-tablet-${{ steps.install.outputs.version }}-
+            rosetta-ruby-tablet-
+
+      - name: Extract Ruby translations
+        env:
+          JSII_RUBY_TARGET_CONFIG: ${{ github.workspace }}/config/cdk-targets.json
+          # Rosetta defaults to half the cores as workers; measured at ~3GB
+          # each, which overruns a 16GB runner. Cap it: the extract is bounded
+          # by memory here, not by cores.
+          JSII_ROSETTA_MAX_WORKER_COUNT: '3'
+        run: |
+          workdir="${{ runner.temp }}/docs-build"
+          cache_dir="${{ runner.temp }}/rosetta-tablet"
+          mkdir -p "$cache_dir"
+          cached="$cache_dir/ruby.tabl.json"
+          # Extract reads the previous tablet and writes the new one beside it;
+          # writing in place would lose the cache if the run failed part-way.
+          node --max-old-space-size=8192 "${GITHUB_WORKSPACE}/scripts/extract-tablet.js" \
+            "$workdir/node_modules/aws-cdk-lib" "$cache_dir/next.tabl.json" \
+            $([ -f "$cached" ] && echo "$cached")
+          mv "$cache_dir/next.tabl.json" "$cached"
+          echo "TABLET=$cached" >> "$GITHUB_ENV"
+
+      - name: Generate aws-cdk-lib Ruby sources
+        env:
+          JSII_RUBY_TARGET_CONFIG: ${{ github.workspace }}/config/cdk-targets.json
+        run: |
+          workdir="${{ runner.temp }}/docs-build"
+          cd "$workdir"
+          # --rosetta-unknown-snippets=translate: a snippet missing from the
+          # tablet would otherwise come back verbatim while still being
+          # labelled Ruby, so the docs would claim Ruby and show TypeScript.
           node --max-old-space-size=8192 "${GITHUB_WORKSPACE}/toolchain/jsii/packages/jsii-pacmak/bin/jsii-pacmak" \
             --plugin "${GITHUB_WORKSPACE}" \
             -t ruby --code-only --force-target \
+            --rosetta-tablet "$TABLET" \
             --rosetta-unknown-snippets=translate \
             -o dist node_modules/aws-cdk-lib
           # The docs index/landing generators read Ruby naming from the
