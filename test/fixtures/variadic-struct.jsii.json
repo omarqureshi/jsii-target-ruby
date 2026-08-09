@@ -86,7 +86,11 @@
           ],
           "variadic": true
         }
-      ]
+      ],
+      "docs": {
+        "stability": "stable",
+        "example": "const consumer = new Consumer({ bucketName: 'my-bucket' });\nconsumer.consume({ bucketName: 'other' });"
+      }
     },
     "variadic_struct.PlainEnum": {
       "assembly": "variadic_struct",

@@ -1,11 +1,12 @@
 import * as spec from '@jsii/spec';
 import { toSnakeCase } from 'codemaker';
 import * as reflect from 'jsii-reflect';
-import { ApiLocation } from 'jsii-rosetta';
+import { ApiLocation, enforcesStrictMode, TargetLanguage } from 'jsii-rosetta';
 import * as path from 'path';
 
 import { Generator, Legalese } from 'jsii-pacmak/lib/generator';
 import { Target, TargetOptions } from 'jsii-pacmak/lib/target';
+import { assertSpecIsRosettaCompatible } from 'jsii-pacmak/lib/rosetta-assembly';
 import { subprocess } from 'jsii-pacmak/lib/util';
 import { generateGemspec, rubyGemName } from './gemspec';
 import * as helpers from './helpers';
@@ -13,6 +14,11 @@ import { rubySq, rubyJsonLiteral } from './helpers';
 import { normalizeFences, rubifyInlineRefs } from './markdown';
 import { generateRbs } from './rbs';
 import { applyRubyTargetOverlay } from './target-config';
+
+// This plugin's language key in rosetta's registry (see src/rosetta/register).
+// TargetLanguage is a closed enum upstream; an external language is a string
+// key the registry resolves, so the cast is the plugin-API boundary.
+const RUBY_TARGET_LANGUAGE = 'ruby' as TargetLanguage;
 
 export class RubyTarget extends Target {
   protected readonly generator: RubyGenerator;
@@ -83,14 +89,15 @@ interface ParamLike {
 
 
 export class RubyGenerator extends Generator {
+  /** The tablet reader pacmak hands every target, used to translate examples. */
+  private readonly rosetta: TargetOptions['rosetta'];
+
   public constructor(
-    // Signature keeps the tablet reader pacmak hands every target; the
-    // rosetta plugin phase (D3) will store and use it for example
-    // translation.
-    _rosetta: TargetOptions['rosetta'],
+    rosetta: TargetOptions['rosetta'],
     options: TargetOptions,
   ) {
     super({ runtimeTypeChecking: options.runtimeTypeChecking });
+    this.rosetta = rosetta;
     // Ruby convention is 2-space indentation (CodeMaker defaults to 4).
     this.code.indentation = 2;
   }
@@ -109,14 +116,22 @@ export class RubyGenerator extends Generator {
   }
 
   /**
-   * `@example` snippets are authored in TypeScript. Translating them to Ruby
-   * requires a Ruby-capable jsii-rosetta, which is the plugin system's phase-2
-   * deliverable (a rosetta language-plugin registry); until that lands, this
-   * standalone target emits examples verbatim — a TypeScript example is more
-   * useful than none, and strictly better than a wrong translation.
+   * Translate an `@example` snippet (authored in TypeScript) to Ruby through
+   * rosetta. The plugin registers its visitor with rosetta's language
+   * registry at load time, so the tablet reader resolves `ruby` like any
+   * built-in language: a pre-built tablet is used when present, otherwise
+   * live conversion runs (when pacmak is invoked with
+   * `--rosetta-unknown-snippets=translate`). With neither, rosetta returns
+   * the TypeScript verbatim — still better than a wrong translation.
    */
-  private convertExample(example: string, _apiLocation: ApiLocation): string {
-    return example;
+  private convertExample(example: string, apiLocation: ApiLocation): string {
+    assertSpecIsRosettaCompatible(this.assembly);
+    return this.rosetta.translateExample(
+      apiLocation,
+      example,
+      RUBY_TARGET_LANGUAGE,
+      enforcesStrictMode(this.assembly),
+    ).source;
   }
 
   /**
@@ -124,15 +139,21 @@ export class RubyGenerator extends Generator {
    * comments, normalise fences, and rubify inline code references. Code-block
    * translation is deferred to the rosetta plugin phase (see convertExample).
    */
-  private convertMarkdown(markdown: string, _apiLocation: ApiLocation): string {
+  private convertMarkdown(markdown: string, apiLocation: ApiLocation): string {
     // Strip HTML comments (e.g. CDK's `<!--BEGIN STABILITY BANNER-->` / CFNONLY
     // markers): YARD's Markdown renderer emits them as visible text instead of hiding
     // them, so they'd otherwise show up verbatim in the rendered README.
     const cleaned = normalizeFences(markdown.replace(/<!--[\s\S]*?-->/g, ''));
-    // Fenced code blocks stay TypeScript until the rosetta plugin phase (see
-    // convertExample); inline code refs in prose are still rubified, since
-    // that transformation is rosetta-independent.
-    return rubifyInlineRefs(cleaned);
+    assertSpecIsRosettaCompatible(this.assembly);
+    // Fenced code blocks go through rosetta; inline code refs in prose are
+    // rubified separately, since that transformation is rosetta-independent.
+    const translated = this.rosetta.translateSnippetsInMarkdown(
+      apiLocation,
+      cleaned,
+      RUBY_TARGET_LANGUAGE,
+      enforcesStrictMode(this.assembly),
+    );
+    return rubifyInlineRefs(translated);
   }
 
   /**
