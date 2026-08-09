@@ -272,16 +272,7 @@ function emitRbsInterface(
   // Behavioral interface → module of method/property signatures.
   lines.push(`module ${full}`);
   for (const p of props) {
-    const t = rbsType(host, host.typeRefSpec(p.type), p.optional);
-    lines.push(`  attr_reader ${rubyName(p.name)}: ${t}`);
-    if (!p.immutable) {
-      // Writers are INPUT positions: the generated setter coerces a hash
-      // literal into the struct, so the signature has to admit it too —
-      // otherwise a type checker rejects the idiomatic call the docs show.
-      lines.push(
-        `  attr_writer ${rubyName(p.name)}: ${rbsParamType(host, host.typeRefSpec(p.type), p.optional)}`,
-      );
-    }
+    lines.push(...attrSignatures(host, p));
   }
   for (const m of methods) {
     lines.push(
@@ -338,15 +329,7 @@ function emitRbsClass(host: RbsHost, typeSpec: reflect.ClassType, lines: string[
       }
       continue;
     }
-    lines.push(`  attr_reader ${rubyName(p.name)}: ${t}`);
-    if (!p.immutable) {
-      // Writers are INPUT positions: the generated setter coerces a hash
-      // literal into the struct, so the signature has to admit it too —
-      // otherwise a type checker rejects the idiomatic call the docs show.
-      lines.push(
-        `  attr_writer ${rubyName(p.name)}: ${rbsParamType(host, host.typeRefSpec(p.type), p.optional)}`,
-      );
-    }
+    lines.push(...attrSignatures(host, p));
   }
   for (const m of methods) {
     const recv = m.static ? 'self.' : '';
@@ -355,4 +338,27 @@ function emitRbsClass(host: RbsHost, typeSpec: reflect.ClassType, lines: string[
     );
   }
   lines.push('end', '');
+}
+
+/**
+ * The RBS signatures for one property: a reader, plus a writer when the
+ * property is mutable.
+ *
+ * The writer is an INPUT position, so it takes the parameter-form type: the
+ * generated setter coerces a hash literal into a struct, and the signature
+ * has to admit that or a type checker rejects the call the docs show.
+ */
+export function attrSignatures(
+  host: RbsHost,
+  p: { name: string; type: any; optional?: boolean; immutable?: boolean },
+): string[] {
+  const lines = [
+    `  attr_reader ${rubyName(p.name)}: ${rbsType(host, host.typeRefSpec(p.type), p.optional)}`,
+  ];
+  if (!p.immutable) {
+    lines.push(
+      `  attr_writer ${rubyName(p.name)}: ${rbsParamType(host, host.typeRefSpec(p.type), p.optional)}`,
+    );
+  }
+  return lines;
 }

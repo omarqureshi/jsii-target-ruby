@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import * as spec from '@jsii/spec';
 
-import { rbsParamType, rbsType, RbsHost } from '../src/rbs';
+import { attrSignatures, rbsParamType, rbsType, RbsHost } from '../src/rbs';
 
 // The whole-file output of generateRbs is validated by the compliance
 // suite's rbs_spec.rb, which runs the real `rbs` tool over the generated
@@ -85,5 +85,38 @@ describe('rbsParamType (input positions)', () => {
       rbsParamType(host, STRUCT, true),
       '(::MyAsm::BucketProps | Hash[Symbol, untyped])?',
     );
+  });
+});
+
+describe('attribute signatures', () => {
+  test('an immutable property gets a reader only', () => {
+    assert.deepEqual(
+      attrSignatures(host, { name: 'bucketName', type: STRING, immutable: true } as any),
+      ['  attr_reader bucket_name: String'],
+    );
+  });
+
+  test('a mutable property also gets a writer', () => {
+    assert.deepEqual(
+      attrSignatures(host, { name: 'bucketName', type: STRING } as any),
+      ['  attr_reader bucket_name: String', '  attr_writer bucket_name: String'],
+    );
+  });
+
+  test('the writer admits a hash literal where the reader does not', () => {
+    // Writers are input positions: the generated setter coerces a hash into
+    // the struct, so a type checker must accept the call the docs show.
+    const [reader, writer] = attrSignatures(host, { name: 'props', type: STRUCT } as any);
+    assert.equal(reader, '  attr_reader props: ::MyAsm::BucketProps');
+    assert.match(writer, /Hash\[/);
+  });
+
+  test('an optional property is nilable in both positions', () => {
+    const [reader, writer] = attrSignatures(
+      host,
+      { name: 'count', type: NUMBER, optional: true } as any,
+    );
+    assert.match(reader, /\?$|nil/);
+    assert.match(writer, /\?$|nil/);
   });
 });
