@@ -1,0 +1,126 @@
+{
+  "author": {
+    "email": "test@example.com",
+    "name": "Test",
+    "organization": false,
+    "roles": [
+      "owner"
+    ]
+  },
+  "description": "Synthetic assembly: a variadic struct parameter in constructor, method and static positions",
+  "fingerprint": "PHONY",
+  "homepage": "https://example.com",
+  "jsiiVersion": "0.0.0-dev",
+  "license": "Apache-2.0",
+  "name": "variadic_struct",
+  "repository": {
+    "type": "git",
+    "url": "https://example.com/repo"
+  },
+  "schema": "jsii/0.10.0",
+  "targets": {
+    "ruby": {
+      "gem": "variadic-struct",
+      "module": "VariadicStruct"
+    }
+  },
+  "version": "1.0.0",
+  "types": {
+    "variadic_struct.SomeStruct": {
+      "assembly": "variadic_struct",
+      "datatype": true,
+      "fqn": "variadic_struct.SomeStruct",
+      "kind": "interface",
+      "name": "SomeStruct",
+      "properties": [
+        {
+          "abstract": true,
+          "immutable": true,
+          "locationInModule": {
+            "filename": "index.ts",
+            "line": 1
+          },
+          "name": "bucketName",
+          "type": {
+            "primitive": "string"
+          }
+        }
+      ]
+    },
+    "variadic_struct.Consumer": {
+      "assembly": "variadic_struct",
+      "fqn": "variadic_struct.Consumer",
+      "kind": "class",
+      "name": "Consumer",
+      "initializer": {
+        "locationInModule": {
+          "filename": "index.ts",
+          "line": 5
+        },
+        "parameters": [
+          {
+            "name": "opts",
+            "type": {
+              "fqn": "variadic_struct.SomeStruct"
+            },
+            "variadic": true
+          }
+        ],
+        "variadic": true
+      },
+      "methods": [
+        {
+          "locationInModule": {
+            "filename": "index.ts",
+            "line": 9
+          },
+          "name": "consume",
+          "parameters": [
+            {
+              "name": "opts",
+              "type": {
+                "fqn": "variadic_struct.SomeStruct"
+              },
+              "variadic": true
+            }
+          ],
+          "variadic": true
+        }
+      ]
+    },
+    "variadic_struct.PlainEnum": {
+      "assembly": "variadic_struct",
+      "fqn": "variadic_struct.PlainEnum",
+      "kind": "enum",
+      "name": "PlainEnum",
+      "docs": {
+        "stability": "stable"
+      },
+      "members": [
+        {
+          "name": "ALPHA"
+        },
+        {
+          "name": "BETA"
+        }
+      ]
+    },
+    "variadic_struct.DeprecatedEnum": {
+      "assembly": "variadic_struct",
+      "fqn": "variadic_struct.DeprecatedEnum",
+      "kind": "enum",
+      "name": "DeprecatedEnum",
+      "docs": {
+        "deprecated": "use PlainEnum"
+      },
+      "members": [
+        {
+          "name": "OLD",
+          "docs": {
+            "deprecated": "gone soon"
+          }
+        }
+      ]
+    }
+  }
+}

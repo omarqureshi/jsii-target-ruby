@@ -59,4 +59,16 @@ RSpec.describe 'Jsii::Error#missing_member? kernel wording contract' do
     # NoMethodError instead of surfacing a Jsii::Error.
     expect { calculator.definitely_not_a_jsii_member }.to raise_error(NoMethodError)
   end
+  describe 'Jsii::Error#missing_member? — matches the message, not the remote stack' do
+    it 'does not misclassify a remote failure whose stack contains a trigger phrase' do
+      err = Jsii::RuntimeError.new('Stack Foo failed to synthesize', "at boom (does not exist)\nat next")
+      expect(err.message).to include('does not exist') # stack is appended to #to_s
+      expect(err.missing_member?).to be(false)
+    end
+
+    it 'still recognises a genuine missing member' do
+      expect(Jsii::RuntimeError.new("Property 'x' is not a property of Y").missing_member?).to be(true)
+    end
+  end
+
 end

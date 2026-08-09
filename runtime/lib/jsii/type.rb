@@ -53,6 +53,15 @@ module Jsii
       def check_fqn(value, fqn, argname)
         return if fqn == 'any'
 
+        # Enum values are Jsii::Enum instances carrying their own fqn; they are
+        # not instances of the generated enum module, so `is_a?` below can
+        # never satisfy them. Compare the fqn instead.
+        if value.is_a?(Jsii::Enum)
+          return if value.fqn == fqn
+
+          raise TypeError, "Expected #{argname} to be a member of #{fqn}, got #{value.fqn}"
+        end
+
         ruby_class = resolve_fqn_to_ruby_class(fqn)
         return unless ruby_class
 

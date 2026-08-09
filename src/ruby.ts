@@ -303,14 +303,23 @@ export class RubyGenerator extends Generator {
       tags.push(`# @return [${t}${opts.propertyOptional ? ', nil' : ''}]`);
     }
 
-    if (docs.default !== undefined) {
+    // Truthiness, not `!== undefined`: rawDocs falls back to a jsii-reflect
+    // `Docs` instance whose getters return `''`/`false` rather than
+    // `undefined`, so an undefined-check marked every undocumented member
+    // (and every enum member) as deprecated with an empty Default note.
+    if (docs.default) {
       tags.push(`# @note Default: ${this.inlineDoc(docs.default)}`);
     }
-    if (docs.deprecated !== undefined) {
-      const reason =
+    if (docs.deprecated) {
+      // Raw spec docs carry the reason in `deprecated` itself; a jsii-reflect
+      // `Docs` instance (enum members have no `.spec`) exposes a boolean plus
+      // a separate `deprecationReason` — take whichever is present so the
+      // reason survives in both shapes.
+      const reasonText =
         typeof docs.deprecated === 'string'
-          ? ` ${this.inlineDoc(docs.deprecated)}`
-          : '';
+          ? docs.deprecated
+          : ((docs as { deprecationReason?: string }).deprecationReason ?? '');
+      const reason = reasonText ? ` ${this.inlineDoc(reasonText)}` : '';
       tags.push(`# @deprecated${reason}`);
     }
     if (docs.see) {
@@ -634,6 +643,12 @@ export class RubyGenerator extends Generator {
       apiLocation: { api: 'type', fqn: typeSpec.fqn },
     });
     this.code.open(`module ${prefix}${this.rubyModuleName(typeSpec.name)}`);
+    // Without this the fqn resolves to nil in Jsii::Type.check_fqn, which
+    // then returns without validating — runtime type checking would be a
+    // silent no-op for every enum-typed parameter, property and struct member.
+    this.code.line(
+      `Jsii::Object.register_jsii_fqn("${rubyDq(typeSpec.fqn)}", self)`,
+    );
     for (const member of resolvedMembers) {
       this.emitDocs(member, {
         apiLocation: {
@@ -946,10 +961,15 @@ export class RubyGenerator extends Generator {
         params: initializer.parameters,
         apiLocation: { api: 'initializer', fqn: typeSpec.fqn },
       });
-      this.code.open(`def initialize(${initParams})`);
+      this.code.open(`def initialize(${initParams}, &jsii_block)`);
       for (const p of initializer.parameters) {
         const rubyParam = helpers.rubyName(p.name);
-        this.emitStructCoercion(rubyParam, p.type);
+        // `variadic` matters: for a variadic parameter the coercion has to
+        // map the splat array's ELEMENTS, not test the array itself against
+        // Hash (which is never true, so the coercion silently never fires and
+        // raw snake_case hashes go over the wire). Mirrors the method and
+        // static emission sites.
+        this.emitStructCoercion(rubyParam, p.type, { variadic: p.variadic });
       }
       const superArgs = initializer.parameters
         .map((p) => {
@@ -967,8 +987,11 @@ export class RubyGenerator extends Generator {
         });
       }
 
+      // Blocks do not propagate through UnboundMethod#call, so the base
+      // class's documented `yield self` never fires unless it is forwarded
+      // explicitly.
       this.code.line(
-        `Jsii::Object.instance_method(:initialize).bind(self).call(${superArgs})`,
+        `Jsii::Object.instance_method(:initialize).bind(self).call(${superArgs}, &jsii_block)`,
       );
       this.code.close('end');
     } else if (initializer) {
@@ -976,9 +999,9 @@ export class RubyGenerator extends Generator {
       // entries onto instantiable subclasses, so a missing parameter list
       // here really means "takes no arguments" — enforce that arity rather
       // than silently forwarding stray args to the kernel).
-      this.code.open('def initialize');
+      this.code.open('def initialize(&jsii_block)');
       this.code.line(
-        'Jsii::Object.instance_method(:initialize).bind(self).call',
+        'Jsii::Object.instance_method(:initialize).bind(self).call(&jsii_block)',
       );
       this.code.close('end');
     } else {

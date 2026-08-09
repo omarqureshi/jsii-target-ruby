@@ -112,4 +112,40 @@ RSpec.describe Jsii::Serializer do
       expect(result).to eq(enum)
     end
   end
+  describe 'Jsii::Serializer.dump_date — does not mutate the caller' do
+    it 'leaves a Time argument untouched' do
+      t = Time.new(2024, 6, 15, 12, 30, 45, '+02:00')
+      before = t.to_s
+      Jsii::Serializer.dump(t)
+      expect(t.to_s).to eq(before)
+      expect(t.utc?).to be(false)
+    end
+
+    it 'serializes a frozen Time instead of raising FrozenError' do
+      t = Time.new(2024, 1, 1, 0, 0, 0, '+00:00').freeze
+      expect { Jsii::Serializer.dump(t) }.not_to raise_error
+    end
+
+    it 'still encodes the correct UTC instant' do
+      t = Time.new(2024, 6, 15, 12, 30, 45, '+02:00')
+      expect(Jsii::Serializer.dump(t)['$jsii.date']).to start_with('2024-06-15T10:30:45')
+    end
+  end
+
+  describe 'Jsii::Serializer.dump — $jsii.map envelope' do
+    it 'wraps maps whose keys collide with wire tags' do
+      encoded = Jsii::Serializer.dump({ '$jsii.byref' => 'not-a-handle' })
+      expect(encoded).to eq({ '$jsii.map' => { '$jsii.byref' => 'not-a-handle' } })
+    end
+
+    it 'round-trips such a map through load' do
+      original = { '$jsii.byref' => 'not-a-handle', 'ok' => 1 }
+      expect(Jsii::Serializer.load(Jsii::Serializer.dump(original))).to eq(original)
+    end
+
+    it 'leaves ordinary maps unwrapped' do
+      expect(Jsii::Serializer.dump({ 'a' => 1 })).to eq({ 'a' => 1 })
+    end
+  end
+
 end

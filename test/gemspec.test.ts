@@ -88,10 +88,26 @@ describe('generateGemspec', () => {
     assert.match(content, /s\.add_dependency 'scope-jsii-calc-lib', '>= 0\.1\.2', '< 0\.2\.0'/);
   });
 
-  test('dependencies without a ruby gem name are omitted', async () => {
+  test('dependencies without an explicit gem name use the derived name', async () => {
+    // Real assemblies carry no jsii.targets.ruby, so this is the DEFAULT
+    // path. Skipping such dependencies produced a gem whose generated sources
+    // `require` packages the gemspec never declared: installs fine, then
+    // LoadError on the first require.
     const content = await generated(
       fakeAssembly({ dependencyClosure: { '@scope/jsii-calc-lib': { targets: {} } } }),
     );
-    assert.ok(!content.includes('scope-jsii-calc-lib'));
+    assert.match(content, /s\.add_dependency 'scope-jsii-calc-lib'/);
+  });
+
+  test('an explicit targets.ruby.gem on a dependency still wins', async () => {
+    const content = await generated(
+      fakeAssembly({
+        dependencyClosure: {
+          '@scope/jsii-calc-lib': { targets: { ruby: { gem: 'custom-name' } } },
+        },
+      }),
+    );
+    assert.match(content, /s\.add_dependency 'custom-name'/);
+    assert.ok(!content.includes("'scope-jsii-calc-lib'"));
   });
 });

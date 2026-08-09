@@ -107,7 +107,11 @@ export async function generateGemspec(
       assemblySpec.dependencies,
     )) {
       const depInfo = assemblySpec.dependencyClosure?.[depName];
-      const depGem = depInfo?.targets?.ruby?.gem as string | undefined;
+      // Fall back to the same derivation this gem's own name uses. Skipping
+      // dependencies without explicit `targets.ruby.gem` produced a gem whose
+      // generated sources `require` packages the gemspec never declared —
+      // installable, then LoadError on first require.
+      const depGem = rubyGemName({ name: depName, targets: depInfo?.targets });
       if (depGem) {
         const pinned = pinExact
           ? resolveInstalledVersion(depName, packageRoot)

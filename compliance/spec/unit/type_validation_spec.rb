@@ -127,4 +127,33 @@ RSpec.describe 'Runtime Type Validation' do
       expect(obj.read_only_string).to eq('Hello')
     end
   end
+  describe 'enum-typed values' do
+    # Enum values are Jsii::Enum instances carrying their own fqn — they are
+    # NOT instances of the generated enum module, so identity has to be
+    # compared by fqn. (Before the enum modules registered their fqn,
+    # check_fqn resolved them to nil and skipped validation entirely: type
+    # checking was a silent no-op for every enum-typed position.)
+    let(:fqn) { 'jsii-calc.StringEnum' }
+
+    it 'accepts a member of the expected enum' do
+      expect { Jsii::Type.check_type(JsiiCalc::StringEnum::A, { 'fqn' => fqn }, 'prop') }
+        .not_to raise_error
+    end
+
+    it 'accepts an equal enum value deserialized from the kernel' do
+      expect { Jsii::Type.check_type(Jsii::Enum.new(fqn, 'A'), { 'fqn' => fqn }, 'prop') }
+        .not_to raise_error
+    end
+
+    it 'rejects a member of a different enum' do
+      expect { Jsii::Type.check_type(JsiiCalc::AllTypesEnum::MY_ENUM_VALUE, { 'fqn' => fqn }, 'prop') }
+        .to raise_error(TypeError, /prop/)
+    end
+
+    it 'rejects a non-enum value' do
+      expect { Jsii::Type.check_type('not-an-enum', { 'fqn' => fqn }, 'prop') }
+        .to raise_error(TypeError, /prop/)
+    end
+  end
+
 end
