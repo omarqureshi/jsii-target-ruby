@@ -214,6 +214,20 @@ export function assemblyAcronyms(config: { targets?: { ruby?: { acronyms?: unkno
 }
 
 /**
+ * Case-insensitive global matcher for one acronym, compiled once.
+ * `lastIndex` is reset by callers before use, since `g` regexes are stateful.
+ */
+const ACRONYM_REGEXPS = new Map<string, RegExp>();
+function acronymRegExp(acronym: string): RegExp {
+  let regex = ACRONYM_REGEXPS.get(acronym);
+  if (regex === undefined) {
+    regex = new RegExp(`(${escapeRegExp(acronym)})`, 'ig');
+    ACRONYM_REGEXPS.set(acronym, regex);
+  }
+  return regex;
+}
+
+/**
  * Module/type-name conversion: PascalCase with `::` nesting for scoped
  * packages, hyphen segments concatenated, declared acronyms case-restored
  * (word-boundary aware, literal not pattern), and a `V_` prefix when the
@@ -238,12 +252,23 @@ export function rubyModuleName(name: string, acronyms: string[] = []): string {
       ? sanitized
       : toPascalCase(sanitized);
 
+  // Acronym replacement only changes CASE, so the lowercase form is invariant
+  // across the loop: compute it once and skip acronyms that cannot match.
+  // With aws-cdk-lib's 53 acronyms this skips ~50 regex passes per name.
+  const lowerPascal = pascal.toLowerCase();
+
   for (const acronym of acronyms) {
+    if (!lowerPascal.includes(acronym.toLowerCase())) {
+      continue;
+    }
     // Find the acronym case-insensitively. A match is only considered a valid
     // word boundary if it starts with a capital letter and is followed by either
     // another capital letter, a digit, an 's' (for plurals), or the end of the string.
     // The acronym is config-supplied text, not a pattern — escape it.
-    const regex = new RegExp(`(${escapeRegExp(acronym)})`, 'ig');
+    // Cached: every type reference resolves through here and aws-cdk-lib
+    // declares 53 acronyms, so compiling these per call dominated generation.
+    const regex = acronymRegExp(acronym);
+    regex.lastIndex = 0;
     pascal = pascal.replace(regex, (match, _p1, offset) => {
       if (match[0] !== match[0].toUpperCase()) return match;
 

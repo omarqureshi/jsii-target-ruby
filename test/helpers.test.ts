@@ -189,3 +189,36 @@ describe('isDeprecated — own docs, not the parent type\'s', () => {
     assert.equal(isDeprecated({ name: 'foo', docs: { deprecated: true } } as any), true);
   });
 });
+
+describe('rubyModuleName performance', () => {
+  // Every type reference resolves through this function, and aws-cdk-lib
+  // declares 53 acronyms — compiling a fresh RegExp per acronym per call put
+  // ~53 RegExp compilations on the hottest path in generation.
+  test('is fast enough for whole-closure generation', () => {
+    const acronyms = [
+      'ACM', 'ALB', 'API', 'APS', 'ARN', 'AWS', 'CDK', 'CE', 'CIDR', 'CUR',
+      'DAX', 'DB', 'DLM', 'DMS', 'DNS', 'DSQL', 'EC2', 'ECR', 'ECS', 'EFS',
+      'EKS', 'ELB', 'EMR', 'FIS', 'FMS', 'FSX', 'IAM', 'IP', 'IVS', 'KMS',
+      'MSK', 'MWAA', 'NLB', 'OAM', 'PCS', 'QLDB', 'RAM', 'RDS', 'RUM', 'S3',
+      'SAM', 'SES', 'SNS', 'SQS', 'SSL', 'SSM', 'TCP', 'TLS', 'UDP', 'URI',
+      'URL', 'VPC', 'WAF',
+    ];
+    const names = ['awsS3Bucket', 'vpcEndpoint', 'someLongServiceName', 'ec2Instance', 'kmsKey'];
+
+    const started = Date.now();
+    for (let i = 0; i < 20_000; i++) {
+      rubyModuleName(names[i % names.length], acronyms);
+    }
+    const elapsed = Date.now() - started;
+
+    // Pre-fix this took ~420ms; the budget is deliberately loose so the test
+    // fails on a regression in kind, not on machine noise.
+    assert.ok(elapsed < 150, `20k conversions took ${elapsed}ms`);
+  });
+
+  test('caching does not change results', () => {
+    assert.equal(rubyModuleName('awsS3Bucket', ['AWS', 'S3']), 'AWSS3Bucket');
+    assert.equal(rubyModuleName('awsS3Bucket', []), 'AwsS3Bucket');
+    assert.equal(rubyModuleName('awsS3Bucket', ['AWS']), 'AWSS3Bucket');
+  });
+});

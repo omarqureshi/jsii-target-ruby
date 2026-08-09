@@ -70,9 +70,13 @@ jobs:
           mkdir -p "$workdir" && cd "$workdir"
           npm init -y > /dev/null
           npm install --save "aws-cdk-lib@${{ inputs.aws-cdk-lib-version || 'latest' }}"
+          # --rosetta-unknown-snippets=translate: without it rosetta returns
+          # snippets verbatim while still labelling the fence with the target
+          # language, so docs would claim Ruby and show TypeScript.
           node "${GITHUB_WORKSPACE}/toolchain/jsii/packages/jsii-pacmak/bin/jsii-pacmak" \
             --plugin "${GITHUB_WORKSPACE}" \
             -t ruby --code-only --force-target \
+            --rosetta-unknown-snippets=translate \
             -o dist node_modules/aws-cdk-lib
           # The docs index/landing generators read Ruby naming from the
           # assembly, and the published assembly carries none (that's what
