@@ -98,7 +98,11 @@ jobs:
           ruby docs-gen/inject-crumb.rb "$OUT"
           ruby docs-gen/gen-index.rb "$ASSEMBLY" "$OUT"
           echo "DOCS_OUT=$OUT" >> "$GITHUB_ENV"
-          echo "built $(find "$OUT/AWSCDK" -maxdepth 1 -type d | wc -l) module dirs"
+          # Ask the same derivation the generators use rather than naming
+          # AWSCDK here — and let it fail the build, because a docs tree with
+          # no identifiable root module is one that would publish empty.
+          ROOT=$(ruby -r./docs-gen/root_module -e 'print DocsRoot.detect(ARGV[0])' "$OUT")
+          echo "built $(find "$OUT/$ROOT" -maxdepth 1 -type d | wc -l) module dirs under $ROOT"
 
       - name: Upload site artifact
         uses: actions/upload-artifact@v4
