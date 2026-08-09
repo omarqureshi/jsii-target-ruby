@@ -199,6 +199,17 @@ describe('Ruby naming behavior', () => {
         /cannot pick a winner/,
       );
     });
+
+    it('names the colliding jsii members across categories', () => {
+      assert.throws(
+        () =>
+          dedup(
+            [{ name: 'fooBar', docs: { deprecated: 'x' } }],
+            [{ name: 'foo_bar', docs: { deprecated: 'y' } }],
+          ),
+        /jsii names: 'fooBar', 'foo_bar'/,
+      );
+    });
   });
 
   describe('rubyFullTypeName with submodules', () => {

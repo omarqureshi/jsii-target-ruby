@@ -146,6 +146,23 @@ describe('dedupByRubyName', () => {
     );
   });
 
+  test('the all-deprecated error names the colliding jsii members', () => {
+    // The message is how a library author finds the two members to rename;
+    // the Ruby name alone does not identify either of them.
+    assert.throws(
+      () =>
+        dedupByRubyName(
+          [
+            { name: 'fooBar', docs: { deprecated: 'x' } },
+            { name: 'foo_bar', docs: { deprecated: 'y' } },
+          ],
+          byName,
+          'test.T',
+        ),
+      /jsii names: 'fooBar', 'foo_bar'/,
+    );
+  });
+
   test('throws when multiple non-deprecated members collide', () => {
     assert.throws(
       () => dedupByRubyName([{ name: 'fooBar' }, { name: 'foo_bar' }], byName, 'test.T'),

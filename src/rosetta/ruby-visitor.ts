@@ -140,6 +140,19 @@ export function guessRubyModuleName(fqn: string): string {
  * Inspects the associated JSII assembly target metadata for explicit module configuration
  * (e.g. `ruby.module`) and package-specific acronyms to output accurate namespaces.
  */
+/**
+ * The Ruby name for whatever jsii declaration a node resolves to, when it
+ * resolves to one at all. Nodes that are not jsii symbols (locals, imports
+ * from elsewhere) return undefined so the caller can fall back to its own
+ * rendering.
+ */
+function rubyNameOf(context: RubyVisitorContext, node: ts.Node): OTree | undefined {
+  const jsiiSym = lookupJsiiSymbolFromNode(context.typeChecker, node);
+  if (!jsiiSym) return undefined;
+  const rubyName = findRubyName(jsiiSym);
+  return rubyName ? new OTree([rubyName]) : undefined;
+}
+
 function findRubyName(jsiiSymbol: JsiiSymbol): string | undefined {
   if (!jsiiSymbol.sourceAssembly?.assembly) {
     // Don't have accurate info, just guess from the FQN
@@ -379,13 +392,8 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     const inTypeExpr = context.currentContext.inTypeExpression || isPascalCase;
 
     if (submoduleReference != null || inTypeExpr) {
-      const jsiiSym = lookupJsiiSymbolFromNode(context.typeChecker, node);
-      if (jsiiSym) {
-        const rubyName = findRubyName(jsiiSym);
-        if (rubyName) {
-          return new OTree([rubyName]);
-        }
-      }
+      const named = rubyNameOf(context, node);
+      if (named) return named;
 
       let exprNode = context.updateContext({ inTypeExpression: inTypeExpr }).convert(node.expression);
       if (inTypeExpr && ts.isIdentifier(node.expression)) {
@@ -550,13 +558,8 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
       return new OTree([toSnakeCase(text)]);
     }
 
-    const jsiiSym = lookupJsiiSymbolFromNode(context.typeChecker, node);
-    if (jsiiSym) {
-      const rubyName = findRubyName(jsiiSym);
-      if (rubyName) {
-        return new OTree([rubyName]);
-      }
-    }
+    const named = rubyNameOf(context, node);
+    if (named) return named;
 
     return new OTree([text]);
   }

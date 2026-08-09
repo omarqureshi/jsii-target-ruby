@@ -317,6 +317,20 @@ export function rubyModuleName(name: string, acronyms: string[] = []): string {
  * deprecation picks a single winner (the deprecated side is dropped).
  * Statics and instance members do not collide with each other.
  */
+/**
+ * Every jsii member colliding on one Ruby name is deprecated, so there is no
+ * winner to pick. The message lists the jsii names because the Ruby name
+ * alone does not tell a library author which members to rename.
+ */
+function allDeprecatedError(rubyKey: string, fqn: string, jsiiNames: string[]): Error {
+  return new Error(
+    `All members mapping to Ruby name '${rubyKey}' on ${fqn} are ` +
+      `deprecated; cannot pick a winner.  jsii names: ${jsiiNames
+        .map((n) => `'${n}'`)
+        .join(', ')}`,
+  );
+}
+
 export function dedupCrossCategory<P extends MemberLike, M extends MemberLike>(
   props: P[],
   methods: M[],
@@ -342,12 +356,7 @@ export function dedupCrossCategory<P extends MemberLike, M extends MemberLike>(
     const rubyKey = key.split(':')[1];
     const nonDeprecated = bucket.filter((e) => !isDeprecated(e.member));
     if (nonDeprecated.length === 0) {
-      throw new Error(
-        `All members mapping to Ruby name '${rubyKey}' on ${fqn} are ` +
-          `deprecated; cannot pick a winner.  jsii names: ${bucket
-            .map((e) => `'${e.member.name}'`)
-            .join(', ')}`,
-      );
+      throw allDeprecatedError(rubyKey, fqn, bucket.map((e) => e.member.name));
     }
     if (nonDeprecated.length > 1) {
       throw new Error(
@@ -400,12 +409,7 @@ export function dedupByRubyName<T extends MemberLike>(
     }
     const nonDeprecated = bucket.filter((m) => !isDeprecated(m));
     if (nonDeprecated.length === 0) {
-      throw new Error(
-        `All members mapping to Ruby name '${rubyKey}' on ${fqn} are ` +
-          `deprecated; cannot pick a winner.  jsii names: ${bucket
-            .map((m) => `'${m.name}'`)
-            .join(', ')}`,
-      );
+      throw allDeprecatedError(rubyKey, fqn, bucket.map((m) => m.name));
     }
     if (nonDeprecated.length > 1) {
       throw new Error(
