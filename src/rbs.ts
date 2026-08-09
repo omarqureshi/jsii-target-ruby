@@ -3,9 +3,9 @@
  * generated Ruby, so Steep/TypeProf users get static checking and editor
  * completion.
  *
- * Names come from the SAME mappers the `.rb` emission uses — the host
- * interface below is the naming/dedup surface of the generator — so
- * signatures line up with the real methods by construction.
+ * Names come from the SAME mappers the `.rb` emission uses — the pure ones
+ * imported from helpers, the assembly-bound ones via the host interface —
+ * so signatures line up with the real methods by construction.
  */
 import * as path from 'path';
 
@@ -13,25 +13,19 @@ import * as spec from '@jsii/spec';
 import * as fs from 'fs-extra';
 import * as reflect from 'jsii-reflect';
 
-import { MemberLike } from './helpers';
+import { dedupByRubyName, dedupCrossCategory, rubyConstName, rubyName } from './helpers';
 
-/** The slice of the Ruby generator the RBS emitter depends on. */
+/**
+ * The slice of the Ruby generator the RBS emitter depends on — only the
+ * genuinely generator-bound parts (assembly-aware naming and type
+ * normalization); pure helpers are imported directly.
+ */
 export interface RbsHost {
   rubyFullTypeName(fqn: string): string;
-  rubyName(name: string): string;
-  rubyConstName(name: string): string;
   rubyPropertyName(prop: reflect.Property): string;
   rubyMethodName(method: reflect.Method): string;
   typeRefSpec(ref: unknown): spec.TypeReference | undefined;
   isStructFqn(fqn: string): boolean;
-  dedupByRubyName<T extends MemberLike>(members: readonly T[], rubyName: (m: T) => string, fqn: string): T[];
-  dedupCrossCategory<P extends MemberLike, M extends MemberLike>(
-    props: P[],
-    methods: M[],
-    propRubyName: (p: P) => string,
-    methodRubyName: (m: M) => string,
-    fqn: string,
-  ): { props: P[]; methods: M[] };
 }
 
 /**
@@ -195,7 +189,7 @@ function rbsParamTypeBare(host: RbsHost, ref: spec.TypeReference | undefined): s
 function rbsParams(host: RbsHost, params: readonly any[]): string {
   return params
     .map((p) => {
-      const name = host.rubyName(p.name);
+      const name = rubyName(p.name);
       if (p.variadic) {
         return `*${rbsParamTypeBare(host, host.typeRefSpec(p.type))} ${name}`;
       }
@@ -214,14 +208,14 @@ function rbsReturn(host: RbsHost, method: any): string {
 }
 
 function emitRbsEnum(host: RbsHost, typeSpec: reflect.EnumType, lines: string[]): void {
-  const members = host.dedupByRubyName(
+  const members = dedupByRubyName(
     typeSpec.members,
-    (m) => host.rubyConstName(m.name),
+    (m) => rubyConstName(m.name),
     typeSpec.fqn,
   );
   lines.push(`module ${host.rubyFullTypeName(typeSpec.fqn)}`);
   for (const m of members) {
-    lines.push(`  ${host.rubyConstName(m.name)}: ::Jsii::Enum`);
+    lines.push(`  ${rubyConstName(m.name)}: ::Jsii::Enum`);
   }
   lines.push('end', '');
 }
@@ -231,19 +225,19 @@ function emitRbsInterface(
   typeSpec: reflect.InterfaceType,
   lines: string[],
 ): void {
-  const { props, methods } = host.dedupCrossCategory(
-    host.dedupByRubyName(
+  const { props, methods } = dedupCrossCategory(
+    dedupByRubyName(
       typeSpec.allProperties,
-      (p) => host.rubyName(p.name),
+      (p) => rubyName(p.name),
       typeSpec.fqn,
     ),
-    host.dedupByRubyName(
+    dedupByRubyName(
       typeSpec.allMethods,
-      (m) => host.rubyName(m.name),
+      (m) => rubyName(m.name),
       typeSpec.fqn,
     ),
-    (p) => host.rubyName(p.name),
-    (m) => host.rubyName(m.name),
+    (p) => rubyName(p.name),
+    (m) => rubyName(m.name),
     typeSpec.fqn,
   );
   const full = host.rubyFullTypeName(typeSpec.fqn);
@@ -262,14 +256,14 @@ function emitRbsInterface(
         // may be given as hashes (coerced at serialization).
         const t = rbsParamType(host, host.typeRefSpec(p.type), p.optional);
         return p.optional
-          ? `?${host.rubyName(p.name)}: ${t}`
-          : `${host.rubyName(p.name)}: ${t}`;
+          ? `?${rubyName(p.name)}: ${t}`
+          : `${rubyName(p.name)}: ${t}`;
       })
       .join(', ');
     lines.push(`  def initialize: (${kwargs}) -> void`);
     for (const p of props) {
       lines.push(
-        `  attr_reader ${host.rubyName(p.name)}: ${rbsType(host, host.typeRefSpec(p.type), p.optional)}`,
+        `  attr_reader ${rubyName(p.name)}: ${rbsType(host, host.typeRefSpec(p.type), p.optional)}`,
       );
     }
     lines.push('end', '');
@@ -280,27 +274,27 @@ function emitRbsInterface(
   lines.push(`module ${full}`);
   for (const p of props) {
     const t = rbsType(host, host.typeRefSpec(p.type), p.optional);
-    lines.push(`  attr_reader ${host.rubyName(p.name)}: ${t}`);
+    lines.push(`  attr_reader ${rubyName(p.name)}: ${t}`);
     if (!p.immutable) {
-      lines.push(`  attr_writer ${host.rubyName(p.name)}: ${t}`);
+      lines.push(`  attr_writer ${rubyName(p.name)}: ${t}`);
     }
   }
   for (const m of methods) {
     lines.push(
-      `  def ${host.rubyName(m.name)}: (${rbsParams(host, m.parameters)}) -> ${rbsReturn(host, m)}`,
+      `  def ${rubyName(m.name)}: (${rbsParams(host, m.parameters)}) -> ${rbsReturn(host, m)}`,
     );
   }
   lines.push('end', '');
 }
 
 function emitRbsClass(host: RbsHost, typeSpec: reflect.ClassType, lines: string[]): void {
-  const { props, methods } = host.dedupCrossCategory(
-    host.dedupByRubyName(
+  const { props, methods } = dedupCrossCategory(
+    dedupByRubyName(
       typeSpec.allProperties,
       (p) => host.rubyPropertyName(p),
       typeSpec.fqn,
     ),
-    host.dedupByRubyName(
+    dedupByRubyName(
       typeSpec.allMethods,
       (m) => host.rubyMethodName(m),
       typeSpec.fqn,
@@ -340,9 +334,9 @@ function emitRbsClass(host: RbsHost, typeSpec: reflect.ClassType, lines: string[
       }
       continue;
     }
-    lines.push(`  attr_reader ${host.rubyName(p.name)}: ${t}`);
+    lines.push(`  attr_reader ${rubyName(p.name)}: ${t}`);
     if (!p.immutable) {
-      lines.push(`  attr_writer ${host.rubyName(p.name)}: ${t}`);
+      lines.push(`  attr_writer ${rubyName(p.name)}: ${t}`);
     }
   }
   for (const m of methods) {

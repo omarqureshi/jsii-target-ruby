@@ -12,14 +12,10 @@ import { rbsParamType, rbsType, RbsHost } from '../src/rbs';
 
 const host: RbsHost = {
   rubyFullTypeName: (fqn) => fqn.replace('my_assembly.', 'MyAsm::'),
-  rubyName: (n) => n,
-  rubyConstName: (n) => n.toUpperCase(),
   rubyPropertyName: (p: any) => p.name,
   rubyMethodName: (m: any) => m.name,
   typeRefSpec: (ref: any) => ref,
   isStructFqn: (fqn) => fqn.endsWith('Props'),
-  dedupByRubyName: (members) => [...members],
-  dedupCrossCategory: (props, methods) => ({ props, methods }),
 };
 
 const STRING: spec.TypeReference = { primitive: spec.PrimitiveType.String };

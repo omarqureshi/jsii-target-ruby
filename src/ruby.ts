@@ -365,7 +365,7 @@ export class RubyGenerator extends Generator {
         ? `Array<${baseType}>`
         : `${baseType}${p.optional ? ', nil' : ''}`;
       const summary = pDocs.summary ? ` ${this.inlineDoc(pDocs.summary)}` : '';
-      tags.push(`# @param ${this.rubyName(p.name)} [${rendered}]${summary}`);
+      tags.push(`# @param ${helpers.rubyName(p.name)} [${rendered}]${summary}`);
     }
 
     if (opts.returns?.type) {
@@ -702,9 +702,9 @@ export class RubyGenerator extends Generator {
   }
 
   private emitEnumType(typeSpec: reflect.EnumType, prefix: string): void {
-    const resolvedMembers = this.dedupByRubyName(
+    const resolvedMembers = helpers.dedupByRubyName(
       typeSpec.members,
-      (m) => this.rubyConstName(m.name),
+      (m) => helpers.rubyConstName(m.name),
       typeSpec.fqn,
     );
     this.emitDocs(typeSpec, {
@@ -720,7 +720,7 @@ export class RubyGenerator extends Generator {
         },
       });
       this.code.line(
-        `${this.rubyConstName(member.name)} = Jsii::Enum.new("${rubyDq(typeSpec.fqn)}", "${rubyDq(member.name)}")`,
+        `${helpers.rubyConstName(member.name)} = Jsii::Enum.new("${rubyDq(typeSpec.fqn)}", "${rubyDq(member.name)}")`,
       );
     }
     this.code.close('end');
@@ -735,19 +735,19 @@ export class RubyGenerator extends Generator {
     // construction — the jsii compiler forbids methods on them — so the
     // method side of the dedup below is a no-op in that branch.
     const { props: resolvedAllProperties, methods: resolvedAllMethods } =
-      this.dedupCrossCategory(
-        this.dedupByRubyName(
+      helpers.dedupCrossCategory(
+        helpers.dedupByRubyName(
           typeSpec.allProperties,
-          (p) => this.rubyName(p.name),
+          (p) => helpers.rubyName(p.name),
           typeSpec.fqn,
         ),
-        this.dedupByRubyName(
+        helpers.dedupByRubyName(
           typeSpec.allMethods,
-          (m) => this.rubyName(m.name),
+          (m) => helpers.rubyName(m.name),
           typeSpec.fqn,
         ),
-        (p) => this.rubyName(p.name),
-        (m) => this.rubyName(m.name),
+        (p) => helpers.rubyName(p.name),
+        (m) => helpers.rubyName(m.name),
         typeSpec.fqn,
       );
     const kind = typeSpec.datatype ? 'class' : 'module';
@@ -793,7 +793,7 @@ export class RubyGenerator extends Generator {
 
       const initArgs = props
         .map((p) => {
-          const name = this.rubyName(p.name);
+          const name = helpers.rubyName(p.name);
           return p.optional ? `${name}: nil` : `${name}:`;
         })
         .join(', ');
@@ -803,7 +803,7 @@ export class RubyGenerator extends Generator {
       this.emitDocs(undefined, { params: props });
       this.code.open(`def initialize(${initArgs})`);
       for (const prop of props) {
-        const rubyName = this.rubyName(prop.name);
+        const rubyName = helpers.rubyName(prop.name);
         this.emitStructCoercion(rubyName, prop.type, {
           assignment: `@${rubyName}`,
         });
@@ -827,7 +827,7 @@ export class RubyGenerator extends Generator {
             memberName: prop.name,
           },
         });
-        this.code.line(`attr_reader :${this.rubyName(prop.name)}`);
+        this.code.line(`attr_reader :${helpers.rubyName(prop.name)}`);
       }
       this.code.line('');
 
@@ -835,7 +835,7 @@ export class RubyGenerator extends Generator {
       this.code.open('{');
       for (const prop of props) {
         this.code.line(
-          `:${this.rubyName(prop.name)} => "${rubyDq(prop.name)}",`,
+          `:${helpers.rubyName(prop.name)} => "${rubyDq(prop.name)}",`,
         );
       }
       this.code.close('}');
@@ -850,7 +850,7 @@ export class RubyGenerator extends Generator {
       this.code.open('result.merge!({');
       for (const prop of props) {
         this.code.line(
-          `"${rubyDq(prop.name)}" => @${this.rubyName(prop.name)},`,
+          `"${rubyDq(prop.name)}" => @${helpers.rubyName(prop.name)},`,
         );
       }
       this.code.close('})');
@@ -858,7 +858,7 @@ export class RubyGenerator extends Generator {
       this.code.close('end');
     } else {
       for (const prop of resolvedAllProperties) {
-        const propRubyName = this.rubyName(prop.name);
+        const propRubyName = helpers.rubyName(prop.name);
         this.emitDocs(prop, {
           propertyType: prop.type,
           propertyOptional: prop.optional,
@@ -887,14 +887,14 @@ export class RubyGenerator extends Generator {
       for (const method of resolvedAllMethods) {
         const sigParams = method.parameters
           .map((p) => {
-            const rubyParam = this.rubyName(p.name);
+            const rubyParam = helpers.rubyName(p.name);
             if (p.variadic) return `*${rubyParam}`;
             return p.optional ? `${rubyParam} = nil` : rubyParam;
           })
           .join(', ');
         const callParams = method.parameters
           .map((p) => {
-            const rubyParam = this.rubyName(p.name);
+            const rubyParam = helpers.rubyName(p.name);
             if (p.variadic) return `*${rubyParam}`;
             return rubyParam;
           })
@@ -909,9 +909,9 @@ export class RubyGenerator extends Generator {
             memberName: method.name,
           },
         });
-        this.code.open(`def ${this.rubyName(method.name)}(${sigParams})`);
+        this.code.open(`def ${helpers.rubyName(method.name)}(${sigParams})`);
         for (const p of method.parameters) {
-          const rubyParam = this.rubyName(p.name);
+          const rubyParam = helpers.rubyName(p.name);
           this.emitStructCoercion(rubyParam, p.type, {
             variadic: p.variadic,
           });
@@ -938,12 +938,12 @@ export class RubyGenerator extends Generator {
       for (const prop of resolvedAllProperties) {
         const isOptional = prop.optional ? 'true' : 'false';
         this.code.line(
-          `:${this.rubyName(prop.name)} => { kind: :property, name: "${rubyDq(prop.name)}", is_optional: ${isOptional} },`,
+          `:${helpers.rubyName(prop.name)} => { kind: :property, name: "${rubyDq(prop.name)}", is_optional: ${isOptional} },`,
         );
       }
       for (const method of resolvedAllMethods) {
         this.code.line(
-          `:${this.rubyName(method.name)} => { kind: :method, name: "${rubyDq(method.name)}", is_optional: false },`,
+          `:${helpers.rubyName(method.name)} => { kind: :method, name: "${rubyDq(method.name)}", is_optional: false },`,
         );
       }
       this.code.close('}');
@@ -963,13 +963,13 @@ export class RubyGenerator extends Generator {
     // accepted cost; statics are the exception (emitted on their defining
     // class only, see isOwnStatic below).
     const { props: resolvedAllProperties, methods: resolvedAllMethods } =
-      this.dedupCrossCategory(
-        this.dedupByRubyName(
+      helpers.dedupCrossCategory(
+        helpers.dedupByRubyName(
           typeSpec.allProperties,
           (p) => this.rubyPropertyName(p),
           typeSpec.fqn,
         ),
-        this.dedupByRubyName(
+        helpers.dedupByRubyName(
           typeSpec.allMethods,
           (m) => this.rubyMethodName(m),
           typeSpec.fqn,
@@ -1013,7 +1013,7 @@ export class RubyGenerator extends Generator {
     ) {
       const initParams = initializer.parameters
         .map((p) => {
-          const rubyParam = this.rubyName(p.name);
+          const rubyParam = helpers.rubyName(p.name);
           if (p.variadic) return `*${rubyParam}`;
           return p.optional ? `${rubyParam} = nil` : rubyParam;
         })
@@ -1025,19 +1025,19 @@ export class RubyGenerator extends Generator {
       });
       this.code.open(`def initialize(${initParams})`);
       for (const p of initializer.parameters) {
-        const rubyParam = this.rubyName(p.name);
+        const rubyParam = helpers.rubyName(p.name);
         this.emitStructCoercion(rubyParam, p.type);
       }
       const superArgs = initializer.parameters
         .map((p) => {
-          const rubyParam = this.rubyName(p.name);
+          const rubyParam = helpers.rubyName(p.name);
           if (p.variadic) return `*${rubyParam}`;
           return rubyParam;
         })
         .join(', ');
 
       for (const p of initializer.parameters) {
-        const rubyParam = this.rubyName(p.name);
+        const rubyParam = helpers.rubyName(p.name);
         this.emitTypeChecking(rubyParam, p.type, p.name, {
           isOptional: p.optional,
           isVariadic: p.variadic,
@@ -1090,14 +1090,14 @@ export class RubyGenerator extends Generator {
     this.code.open('def self.jsii_overridable_methods');
     this.code.open('{');
     for (const prop of overridableProps) {
-      const rubyName = this.rubyName(prop.name);
+      const rubyName = helpers.rubyName(prop.name);
       const isOptional = prop.optional ? 'true' : 'false';
       this.code.line(
         `:${rubyName} => { kind: :property, name: "${rubyDq(prop.name)}", is_optional: ${isOptional} },`,
       );
     }
     for (const method of overridableMethods) {
-      const rubyName = this.rubyName(method.name);
+      const rubyName = helpers.rubyName(method.name);
       this.code.line(
         `:${rubyName} => { kind: :method, name: "${rubyDq(method.name)}", is_optional: false },`,
       );
@@ -1111,7 +1111,7 @@ export class RubyGenerator extends Generator {
 
       const sigParams = method.parameters
         .map((p) => {
-          const rubyParam = this.rubyName(p.name);
+          const rubyParam = helpers.rubyName(p.name);
           if (p.variadic) return `*${rubyParam}`;
           return p.optional ? `${rubyParam} = nil` : rubyParam;
         })
@@ -1119,7 +1119,7 @@ export class RubyGenerator extends Generator {
 
       const callParams = method.parameters
         .map((p) => {
-          const rubyParam = this.rubyName(p.name);
+          const rubyParam = helpers.rubyName(p.name);
           if (p.variadic) return `*${rubyParam}`;
           return rubyParam;
         })
@@ -1137,7 +1137,7 @@ export class RubyGenerator extends Generator {
       });
       this.code.open(`def self.${this.rubyMethodName(method)}(${sigParams})`);
       for (const p of method.parameters) {
-        const rubyParam = this.rubyName(p.name);
+        const rubyParam = helpers.rubyName(p.name);
         this.emitStructCoercion(rubyParam, p.type, {
           variadic: p.variadic,
         });
@@ -1220,7 +1220,7 @@ export class RubyGenerator extends Generator {
 
       const sigParams = method.parameters
         .map((p) => {
-          const rubyParam = this.rubyName(p.name);
+          const rubyParam = helpers.rubyName(p.name);
           if (p.variadic) return `*${rubyParam}`;
           return p.optional ? `${rubyParam} = nil` : rubyParam;
         })
@@ -1228,7 +1228,7 @@ export class RubyGenerator extends Generator {
 
       const callParams = method.parameters
         .map((p) => {
-          const rubyParam = this.rubyName(p.name);
+          const rubyParam = helpers.rubyName(p.name);
           if (p.variadic) return `*${rubyParam}`;
           return rubyParam;
         })
@@ -1246,7 +1246,7 @@ export class RubyGenerator extends Generator {
       });
       this.code.open(`def ${this.rubyMethodName(method)}(${sigParams})`);
       for (const p of method.parameters) {
-        const rubyParam = this.rubyName(p.name);
+        const rubyParam = helpers.rubyName(p.name);
         this.emitStructCoercion(rubyParam, p.type, {
           variadic: p.variadic,
         });
@@ -1293,7 +1293,7 @@ export class RubyGenerator extends Generator {
 
     // Names in this fqn belong to `config`'s assembly — apply *its*
     // acronym configuration, not the pooled closure's.
-    const acronyms = this.assemblyAcronyms(config);
+    const acronyms = helpers.assemblyAcronyms(config);
     const assemblyModule =
       config.targets?.ruby?.module ??
       this.rubyModuleName(assemblyName, acronyms);
@@ -1384,10 +1384,6 @@ export class RubyGenerator extends Generator {
       paths.add(namespacePart ? `${namespacePart}::${namePart}` : namePart);
     }
     return paths;
-  }
-
-  public rubyName(name: string): string {
-    return helpers.rubyName(name);
   }
 
   /**
@@ -1560,12 +1556,12 @@ export class RubyGenerator extends Generator {
    * so both can coexist on the same class without ambiguity.
    */
   public rubyPropertyName(prop: { name: string; const?: boolean }): string {
-    if (prop.const) return this.rubyConstName(prop.name);
-    return this.rubyName(prop.name);
+    if (prop.const) return helpers.rubyConstName(prop.name);
+    return helpers.rubyName(prop.name);
   }
 
   public rubyMethodName(method: { name: string }): string {
-    return this.rubyName(method.name);
+    return helpers.rubyName(method.name);
   }
 
   /**
@@ -1590,24 +1586,6 @@ export class RubyGenerator extends Generator {
    * (`def self.foo` vs `def foo`), so collisions are only checked within
    * the same staticness.
    */
-  public dedupCrossCategory<P extends helpers.MemberLike, M extends helpers.MemberLike>(
-    props: P[],
-    methods: M[],
-    propRubyName: (p: P) => string,
-    methodRubyName: (m: M) => string,
-    fqn: string,
-  ): { props: P[]; methods: M[] } {
-    return helpers.dedupCrossCategory(props, methods, propRubyName, methodRubyName, fqn);
-  }
-
-  public dedupByRubyName<T extends helpers.MemberLike>(
-    members: readonly T[],
-    rubyName: (m: T) => string,
-    fqn: string,
-  ): T[] {
-    return helpers.dedupByRubyName(members, rubyName, fqn);
-  }
-
   private rubyModuleForAssembly(name: string): string {
     if (name === this.assembly.name) {
       return this.assembly.targets?.ruby?.module ?? this.rubyModuleName(name);
@@ -1616,7 +1594,7 @@ export class RubyGenerator extends Generator {
     if (depInfo) {
       return (
         depInfo.targets?.ruby?.module ??
-        this.rubyModuleName(name, this.assemblyAcronyms(depInfo))
+        this.rubyModuleName(name, helpers.assemblyAcronyms(depInfo))
       );
     }
     return this.rubyModuleName(name, []);
@@ -1629,21 +1607,12 @@ export class RubyGenerator extends Generator {
    * rewrite an unrelated `RamUsage` type in the consuming assembly (or in
    * a sibling dependency).
    */
-  private assemblyAcronyms(
-    config: { targets?: spec.AssemblyTargets } | undefined,
-  ): string[] {
-    return helpers.assemblyAcronyms(config);
-  }
-
+  // The one wrapper around a helper that earns its keep: it binds the
+  // default acronym list to the assembly being generated. Callers converting
+  // names that belong to a *dependency* pass that assembly's own list
+  // explicitly (see rubyFullTypeName / rubyModuleForAssembly).
   private rubyModuleName(name: string, acronyms?: string[]): string {
-    // Default to the acronyms of the assembly being generated; callers
-    // converting names that belong to a *dependency* pass that assembly's
-    // own list (see rubyFullTypeName / rubyModuleForAssembly).
-    return helpers.rubyModuleName(name, acronyms ?? this.assemblyAcronyms(this.assembly));
-  }
-
-  public rubyConstName(name: string): string {
-    return helpers.rubyConstName(name);
+    return helpers.rubyModuleName(name, acronyms ?? helpers.assemblyAcronyms(this.assembly));
   }
 
   protected getAssemblyOutputDir(_mod: spec.Assembly) {
