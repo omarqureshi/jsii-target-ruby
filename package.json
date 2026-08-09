@@ -13,7 +13,8 @@
     "build": "node node_modules/typescript/bin/tsc -p tsconfig.json",
     "test": "npm run test:unit && npm run test:compliance",
     "test:unit": "node node_modules/typescript/bin/tsc -p tsconfig.test.json && node --test build/test/*.test.js",
-    "test:compliance": "bash compliance/generate.sh && cd compliance && bundle install --quiet && bundle exec rspec --require ./spec/compliance_formatter.rb --format ComplianceFormatter --format progress"
+    "test:compliance": "bash compliance/generate.sh && cd compliance && bundle install --quiet && bundle exec rspec --require ./spec/compliance_formatter.rb --format ComplianceFormatter --format progress",
+    "compliance:report": "node scripts/compliance-report.js"
   },
   "peerDependencies": {
     "jsii-pacmak": ">= 1.0.0 < 2.0.0 || >= 0.0.0-0 < 0.1.0"
