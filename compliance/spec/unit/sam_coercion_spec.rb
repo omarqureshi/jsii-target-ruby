@@ -162,3 +162,34 @@ RSpec.describe 'SAM callable coercion' do
     end
   end
 end
+
+RSpec.describe 'Jsii::Utils.coerce_callable — wrapper reuse' do
+  let(:sam_interface) { JsiiCalc::IBellRinger }
+
+  # Every call built a fresh anonymous Class (and instance), so passing the
+  # same Proc twice produced two unrelated wrappers — two kernel objects, two
+  # strong-reference entries, and a host that cannot recognise the callback it
+  # was given twice as the same object.
+  it 'returns the same wrapper for the same callable' do
+    callable = ->(bell) { bell.ring }
+    first = Jsii::Utils.coerce_callable(callable, sam_interface)
+    second = Jsii::Utils.coerce_callable(callable, sam_interface)
+
+    expect(second).to equal(first)
+  end
+
+  it 'reuses one wrapper class across different callables' do
+    a = Jsii::Utils.coerce_callable(->(bell) { bell.ring }, sam_interface)
+    b = Jsii::Utils.coerce_callable(->(bell) { bell.ring }, sam_interface)
+
+    expect(b).not_to equal(a)
+    expect(b.class).to equal(a.class)
+  end
+
+  it 'still wraps the hash form and dispatches to the proc' do
+    seen = nil
+    wrapped = Jsii::Utils.coerce_callable({ your_turn: ->(bell) { seen = bell; :rang } }, sam_interface)
+    expect(wrapped.your_turn(:a_bell)).to eq(:rang)
+    expect(seen).to eq(:a_bell)
+  end
+end

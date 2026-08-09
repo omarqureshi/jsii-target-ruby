@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'monitor'
+
 module Jsii
   # String / Symbol / value utility functions used internally by the jsii
   # runtime.  Scoped under Jsii::Utils to avoid monkey-patching core classes —
@@ -171,11 +173,39 @@ module Jsii
         end
       return value if callable.nil?
 
-      wrapper = Class.new do
-        include interface_module
-        define_method(ruby_name) { |*args| callable.call(*args) }
-      end
-      wrapper.new
+      wrapper_instance_for(callable, interface_module, ruby_name)
     end
+
+    # One wrapper class per (interface, member) and one wrapper INSTANCE per
+    # callable. Building a fresh anonymous Class on every call meant the same
+    # Proc passed twice produced two unrelated wrappers — two remote objects,
+    # two strong-reference entries, and a host unable to recognise the
+    # callback it was handed twice as the same object.
+    #
+    # Both caches are keyed weakly on identity so a callable that goes out of
+    # scope does not pin its wrapper.
+    WRAPPER_CLASSES = {}
+    WRAPPER_INSTANCES = ObjectSpace::WeakMap.new
+    WRAPPER_MONITOR = Monitor.new
+    private_constant :WRAPPER_CLASSES, :WRAPPER_INSTANCES, :WRAPPER_MONITOR
+
+    def wrapper_instance_for(callable, interface_module, ruby_name)
+      WRAPPER_MONITOR.synchronize do
+        existing = WRAPPER_INSTANCES[callable]
+        return existing if existing
+
+        klass = WRAPPER_CLASSES[[interface_module, ruby_name]] ||= Class.new do
+          include interface_module
+          define_method(:initialize) { |target| @jsii_callable = target }
+          define_method(ruby_name) { |*args| @jsii_callable.call(*args) }
+        end
+
+        instance = klass.new(callable)
+        WRAPPER_INSTANCES[callable] = instance
+        instance
+      end
+    end
+    module_function :wrapper_instance_for
+    private_class_method :wrapper_instance_for
   end
 end

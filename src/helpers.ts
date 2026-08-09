@@ -59,7 +59,18 @@ export function rubyJsonLiteral(value: any): string {
  *     deprecation status.
  * We treat any truthy value on either shape as deprecated.
  */
-export function isDeprecated(member: { docs?: { deprecated?: unknown } }): boolean {
+export function isDeprecated(member: {
+  docs?: { deprecated?: unknown };
+  spec?: { docs?: { deprecated?: unknown } };
+}): boolean {
+  // Prefer the member's OWN docs. jsii-reflect's `Docs#deprecated` is
+  // inherited from the declaring type, so every member of a deprecated type
+  // reports true — and since this predicate decides collision winners, a name
+  // collision inside a deprecated type would make every candidate look
+  // deprecated and abort generation with "cannot pick a winner".
+  if (member.spec?.docs !== undefined) {
+    return !!member.spec.docs.deprecated;
+  }
   return !!member.docs?.deprecated;
 }
 

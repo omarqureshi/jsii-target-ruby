@@ -161,3 +161,31 @@ describe('dedupCrossCategory (pure form)', () => {
     });
   });
 });
+
+describe('isDeprecated — own docs, not the parent type\'s', () => {
+  // jsii-reflect's Docs#deprecated is inherited: every member of a deprecated
+  // type reports true. isDeprecated drives the collision passes, so with the
+  // inherited value a name collision INSIDE a deprecated type makes every
+  // candidate look deprecated and generation aborts with "cannot pick a
+  // winner" instead of choosing one.
+  test('prefers the member\'s own spec docs over the inherited reflect view', () => {
+    const member = {
+      name: 'foo',
+      spec: { docs: { summary: 'not deprecated itself' } },
+      docs: { deprecated: true }, // reflect's inherited view
+    };
+    assert.equal(isDeprecated(member as any), false);
+  });
+
+  test('still reports a member deprecated in its own right', () => {
+    assert.equal(
+      isDeprecated({ name: 'foo', spec: { docs: { deprecated: 'use bar' } } } as any),
+      true,
+    );
+  });
+
+  test('falls back to the reflect view when there are no spec docs', () => {
+    // Enum members have no `.spec`, so the reflect Docs instance is all there is.
+    assert.equal(isDeprecated({ name: 'foo', docs: { deprecated: true } } as any), true);
+  });
+});
