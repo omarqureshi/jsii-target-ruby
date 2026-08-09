@@ -44,9 +44,11 @@ const LOCAL_CORPUS = path.resolve(__dirname, '..', '..', 'test', 'translations-l
 //    on error symbols that have no declarations — property accesses through an
 //    unresolvable module either crash outright (class_with_namespace) or
 //    derail submodule detection (submodule-import's `require_relative` line).
+// Gaps retired as upstream fixes land: classes/class_with_namespace was
+// fixed by guarding the declaration-less symbol in submodule-reference
+// (jsii-rosetta), which stopped isLikelyNamespace from crashing.
 const KNOWN_RENDER_GAPS = new Set<string>([
   'imports/submodule-import', // (2)
-  'classes/class_with_namespace', // (2) — crashes stock rosetta
   'expressions/increment_decrement', // (1)
   'expressions/ternary', // (1)
 ]);
