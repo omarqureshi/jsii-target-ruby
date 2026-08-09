@@ -457,3 +457,35 @@ export function resolveRubyModulePath(fqn: string, provider: ModuleNameProvider)
 
   return result.join('::');
 }
+
+/**
+ * Ruby parameter list for a method DEFINITION: variadic parameters splat,
+ * optional ones default to nil.
+ */
+export function rubySignatureParams(
+  params: readonly { name: string; variadic?: boolean; optional?: boolean }[],
+): string {
+  return params
+    .map((p) => {
+      const rubyParam = rubyName(p.name);
+      if (p.variadic) return `*${rubyParam}`;
+      return p.optional ? `${rubyParam} = nil` : rubyParam;
+    })
+    .join(', ');
+}
+
+/**
+ * Ruby argument list for FORWARDING those parameters to the kernel: variadic
+ * parameters splat, everything else passes through positionally (optionals
+ * already carry their default from the signature).
+ */
+export function rubyCallParams(
+  params: readonly { name: string; variadic?: boolean }[],
+): string {
+  return params
+    .map((p) => {
+      const rubyParam = rubyName(p.name);
+      return p.variadic ? `*${rubyParam}` : rubyParam;
+    })
+    .join(', ');
+}

@@ -10,7 +10,9 @@ import {
   rubyConstName,
   rubyJsonLiteral,
   rubyModuleName,
+  rubyCallParams,
   rubyName,
+  rubySignatureParams,
   rubySq,
   toScreamingSnakeCase,
 } from '../src/helpers';
@@ -235,5 +237,29 @@ describe('rubyJsonLiteral emits an encoded spec, not an inline decode', () => {
 
     const decoded = JSON.parse(Buffer.from(literal.slice(1, -1), 'base64').toString('utf-8'));
     assert.deepEqual(decoded, { primitive: 'string' });
+  });
+});
+
+describe('parameter rendering', () => {
+  const params = [
+    { name: 'requiredThing' },
+    { name: 'maybeThing', optional: true },
+    { name: 'restThings', variadic: true },
+  ];
+
+  test('signature params: variadic splats, optional defaults to nil', () => {
+    assert.equal(
+      rubySignatureParams(params),
+      'required_thing, maybe_thing = nil, *rest_things',
+    );
+  });
+
+  test('call params: variadic splats, no defaults', () => {
+    assert.equal(rubyCallParams(params), 'required_thing, maybe_thing, *rest_things');
+  });
+
+  test('reserved names are escaped in both forms', () => {
+    assert.equal(rubySignatureParams([{ name: 'class' }]), '_class');
+    assert.equal(rubyCallParams([{ name: 'class' }]), '_class');
   });
 });

@@ -844,20 +844,8 @@ export class RubyGenerator extends Generator {
       }
 
       for (const method of resolvedAllMethods) {
-        const sigParams = method.parameters
-          .map((p) => {
-            const rubyParam = helpers.rubyName(p.name);
-            if (p.variadic) return `*${rubyParam}`;
-            return p.optional ? `${rubyParam} = nil` : rubyParam;
-          })
-          .join(', ');
-        const callParams = method.parameters
-          .map((p) => {
-            const rubyParam = helpers.rubyName(p.name);
-            if (p.variadic) return `*${rubyParam}`;
-            return rubyParam;
-          })
-          .join(', ');
+        const sigParams = helpers.rubySignatureParams(method.parameters);
+        const callParams = helpers.rubyCallParams(method.parameters);
         this.emitDocs(method, {
           params: method.parameters,
           returns: method.spec?.returns,
@@ -1076,21 +1064,9 @@ export class RubyGenerator extends Generator {
     for (const method of resolvedAllMethods) {
       if (!method.static || !isOwnStatic(method)) continue;
 
-      const sigParams = method.parameters
-        .map((p) => {
-          const rubyParam = helpers.rubyName(p.name);
-          if (p.variadic) return `*${rubyParam}`;
-          return p.optional ? `${rubyParam} = nil` : rubyParam;
-        })
-        .join(', ');
+      const sigParams = helpers.rubySignatureParams(method.parameters);
 
-      const callParams = method.parameters
-        .map((p) => {
-          const rubyParam = helpers.rubyName(p.name);
-          if (p.variadic) return `*${rubyParam}`;
-          return rubyParam;
-        })
-        .join(', ');
+      const callParams = helpers.rubyCallParams(method.parameters);
 
       this.emitDocs(method, {
         params: method.parameters,
@@ -1185,21 +1161,9 @@ export class RubyGenerator extends Generator {
     for (const method of resolvedAllMethods) {
       if (method.static) continue;
 
-      const sigParams = method.parameters
-        .map((p) => {
-          const rubyParam = helpers.rubyName(p.name);
-          if (p.variadic) return `*${rubyParam}`;
-          return p.optional ? `${rubyParam} = nil` : rubyParam;
-        })
-        .join(', ');
+      const sigParams = helpers.rubySignatureParams(method.parameters);
 
-      const callParams = method.parameters
-        .map((p) => {
-          const rubyParam = helpers.rubyName(p.name);
-          if (p.variadic) return `*${rubyParam}`;
-          return rubyParam;
-        })
-        .join(', ');
+      const callParams = helpers.rubyCallParams(method.parameters);
 
       this.emitDocs(method, {
         params: method.parameters,
