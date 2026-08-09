@@ -2,7 +2,7 @@ import * as ts from 'typescript';
 
 import { rubyGemName } from '../gemspec';
 import { resolveRubyModulePath, rubyConstName, rubyModuleName, rubyName, toPascalCase } from '../helpers';
-import { loadRubyTargetOverlay } from '../target-config';
+import { loadRubyTargetOverlay, rubyModuleForImportAlias } from '../target-config';
 import { DefaultVisitor } from 'jsii-rosetta/lib/languages/default';
 import { TargetLanguage } from 'jsii-rosetta/lib/languages/target-language';
 import { analyzeObjectLiteral, ObjectLiteralStruct } from 'jsii-rosetta/lib/jsii/jsii-types';
@@ -300,7 +300,12 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
    */
   private rubyModuleForAlias(alias: string): string | undefined {
     const fqn = this.importedModuleFqns.get(alias);
-    return fqn ? guessRubyModuleName(fqn) : undefined;
+    if (fqn) {
+      return guessRubyModuleName(fqn);
+    }
+    // No import to learn from — most published examples are fragments. Fall
+    // back to the alias naming a submodule the overlay declares.
+    return rubyModuleForImportAlias(alias);
   }
 
   /**
@@ -312,6 +317,19 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     return imported
       ? `${guessRubyModuleName(imported.fqn)}::${rubyModuleName(imported.name)}`
       : rubyModuleName(text);
+  }
+
+  /**
+   * A type name reached through a module alias, e.g. the `Role` of
+   * `iam.Role`. Acronym casing comes from the owning assembly, so it matches
+   * the constant the generator emits (`Vpc` -> `VPC`).
+   */
+  private rubyTypeNameIn(modulePath: string, text: string): string {
+    const assembly = Object.entries(loadRubyTargetOverlay() ?? {}).find(([, entry]) =>
+      Object.values(entry?.submodules ?? {}).some((s) => s?.module === modulePath),
+    );
+    const acronyms = (assembly?.[1]?.acronyms as string[] | undefined) ?? [];
+    return rubyModuleName(text, acronyms);
   }
 
   public override importStatement(node: ImportStatement, _context: RubyVisitorContext): OTree {
@@ -491,7 +509,12 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
 
       let nameNode = context.convert(node.name);
       if (inTypeExpr) {
-        nameNode = new OTree([rubyModuleName(nameText)]);
+        const modulePath = ts.isIdentifier(node.expression)
+          ? this.rubyModuleForAlias(context.textOf(node.expression))
+          : undefined;
+        nameNode = new OTree([
+          modulePath ? this.rubyTypeNameIn(modulePath, nameText) : rubyModuleName(nameText),
+        ]);
       }
 
       return new OTree([exprNode, '::', nameNode]);

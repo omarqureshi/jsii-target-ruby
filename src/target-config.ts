@@ -108,3 +108,53 @@ function applyEntry(carrier: TargetsCarrier, entry: RubyTargetEntry | undefined)
 function stripComments<T extends object>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([k]) => !k.startsWith('_'))) as Partial<T>;
 }
+
+/**
+ * Reverse index from a plausible import alias to the Ruby module it names,
+ * built from the overlay's submodules. Cached per overlay object.
+ */
+const ALIAS_INDEX = new WeakMap<object, Map<string, string | null>>();
+
+/**
+ * The Ruby module path an import alias names, inferred from the overlay's
+ * submodules — `iam` -> `AWSCDK::IAM`.
+ *
+ * Published examples are usually fragments: the rosetta fixture that would
+ * `import * as iam from 'aws-cdk-lib/aws-iam'` lives in the library's source
+ * repo, not in the package, so there is no import statement to learn the alias
+ * from and the reference would otherwise render as a bare `Iam::Role` — no
+ * root module, and the acronym lost with it.
+ *
+ * Only aliases naming a submodule the overlay actually declares are resolved,
+ * and an alias claimed by more than one assembly resolves to nothing rather
+ * than to a guess.
+ */
+export function rubyModuleForImportAlias(alias: string): string | undefined {
+  const overlay = loadRubyTargetOverlay();
+  if (overlay === undefined) {
+    return undefined;
+  }
+
+  let index = ALIAS_INDEX.get(overlay);
+  if (index === undefined) {
+    index = new Map<string, string | null>();
+    for (const entry of Object.values(overlay)) {
+      for (const [fqn, submodule] of Object.entries(entry?.submodules ?? {})) {
+        const module = submodule?.module;
+        if (!module) continue;
+
+        const leaf = fqn.split('.').pop() ?? '';
+        // `aws-cdk-lib.aws_iam` is imported as `aws-cdk-lib/aws-iam` and
+        // conventionally aliased `iam`.
+        for (const candidate of new Set([leaf, leaf.replace(/^aws_/, '')])) {
+          if (!candidate) continue;
+          // `null` marks an alias claimed by more than one module.
+          index.set(candidate, index.has(candidate) && index.get(candidate) !== module ? null : module);
+        }
+      }
+    }
+    ALIAS_INDEX.set(overlay, index);
+  }
+
+  return index.get(alias) ?? undefined;
+}

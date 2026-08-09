@@ -161,6 +161,39 @@ describe('import aliases qualify type references', () => {
     assert.ok(!/Scope::SomeModule::do_thing/.test(ruby), `function was qualified:\n${ruby}`);
   });
 
+  test('an unimported CDK submodule alias is qualified, with acronym casing', () => {
+    // Published CDK examples are fragments: the fixture that would import
+    // `iam` is not in the package, so there is no import to learn from. The
+    // alias still names a real submodule of the assembly being documented,
+    // and `Iam::Role` is wrong twice over — no root module, and IAM is an
+    // acronym the overlay knows about.
+    const ruby = toRuby("new iam.Role(this, 'R');");
+    assert.match(ruby, /AWSCDK::IAM::Role/);
+  });
+
+  test('the same inference covers the S3 fragment case', () => {
+    assert.match(toRuby("new s3.Bucket(this, 'B');"), /AWSCDK::S3::Bucket/);
+  });
+
+  test('acronyms apply to the type name as well as the module', () => {
+    assert.match(toRuby("new ec2.Vpc(this, 'V');"), /AWSCDK::EC2::VPC/);
+  });
+
+  test('an alias that names no known submodule is left alone', () => {
+    // Inference must not invent a module for something the assembly does not
+    // declare.
+    const ruby = toRuby("new widgets.Thing();");
+    assert.match(ruby, /Widgets::Thing/);
+    assert.ok(!/AWSCDK::Widgets/.test(ruby), `invented a module:\n${ruby}`);
+  });
+
+  test('a lowercase member is a method call, not a type reference', () => {
+    // `iam.something()` is a call on a local variable; qualifying it would
+    // turn a value into a constant path.
+    const ruby = toRuby('iam.someHelper();');
+    assert.ok(!/AWSCDK::IAM/.test(ruby), `qualified a method call:\n${ruby}`);
+  });
+
   test('an unknown package still renders its alias, not a bogus prefix', () => {
     const ruby = toRuby(
       ["import * as other from 'some-other-lib';", "new other.Thing();"].join('\n'),
