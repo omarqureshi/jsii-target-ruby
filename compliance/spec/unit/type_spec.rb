@@ -86,3 +86,57 @@ RSpec.describe 'Jsii::Struct hash-style reads' do
     expect { struct[:nope] }.to raise_error(NameError, /nope/)
   end
 end
+
+RSpec.describe 'Jsii::Object.registered_class? performance' do
+  # Called once per overridable member per object construction. A linear
+  # Hash#value? scan over the fqn->class registry (thousands of entries for
+  # aws-cdk-lib) made construction cost grow with library size.
+  after do
+    # The registry is process-global; don't leave synthetic entries behind for
+    # the rest of the suite.
+    Jsii::Object.registry.delete_if { |fqn, _| fqn.start_with?('perf.') }
+  end
+
+  it 'is constant-time with respect to registry size' do
+    fake = Array.new(3000) { |i| [Class.new, "perf.Type#{i}"] }
+    fake.each { |klass, fqn| Jsii::Object.register_jsii_fqn(fqn, klass) }
+
+    needle = Class.new # never registered: the worst case for a linear scan
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    20_000.times { Jsii::Object.registered_class?(needle) }
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+    expect(elapsed).to be < 0.2, "20k lookups over a 3k registry took #{elapsed.round(3)}s"
+  end
+
+  it 'answers the same regardless of receiver' do
+    # registered_class? is called as `ruby_class.registered_class?(owner)`, so
+    # the receiver is whatever generated class is being inspected. A reverse
+    # index memoized per receiver reports every generated class as
+    # unregistered, which makes every generated method look like a user
+    # override and floods the kernel with callbacks.
+    klass = Class.new
+    Jsii::Object.register_jsii_fqn('perf.ReceiverCheck', klass)
+
+    expect(Jsii::Object.registered_class?(klass)).to be(true)
+    expect(JsiiCalc::Calculator.registered_class?(klass)).to be(true)
+    expect(Class.new(Jsii::Object).registered_class?(klass)).to be(true)
+  end
+
+  it 'still answers correctly' do
+    klass = Class.new
+    expect(Jsii::Object.registered_class?(klass)).to be(false)
+    Jsii::Object.register_jsii_fqn('perf.Registered', klass)
+    expect(Jsii::Object.registered_class?(klass)).to be(true)
+  end
+
+  it 'stops reporting a class that was replaced for its fqn' do
+    old_klass = Class.new
+    new_klass = Class.new
+    Jsii::Object.register_jsii_fqn('perf.Replaced', old_klass)
+    Jsii::Object.register_jsii_fqn('perf.Replaced', new_klass)
+
+    expect(Jsii::Object.registered_class?(new_klass)).to be(true)
+    expect(Jsii::Object.registered_class?(old_klass)).to be(false)
+  end
+end

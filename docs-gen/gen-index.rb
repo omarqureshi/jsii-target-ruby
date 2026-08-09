@@ -15,6 +15,7 @@ require 'json'
 require 'zlib'
 require 'set'
 require_relative 'render'
+require_relative 'root_module'
 begin
   require 'rouge' # syntax highlighting for the getting-started code blocks
 rescue LoadError
@@ -22,9 +23,11 @@ rescue LoadError
 end
 
 assembly_path, out_dir = ARGV
-awscdk = File.join(out_dir, 'AWSCDK')
 raw = File.binread(assembly_path)
 assembly = JSON.parse(raw[0, 2].bytes == [0x1f, 0x8b] ? Zlib.gunzip(raw) : raw)
+# Root module name is library data (targets.ruby.module), not a constant here.
+root_module = DocsRoot.from_assembly(assembly)
+awscdk = File.join(out_dir, root_module)
 
 # Top-level submodule fqns (`aws-cdk-lib.<name>`) that actually contain types.
 # A type-less submodule is a deprecated tombstone (only AWSCDK::Assets — "All types

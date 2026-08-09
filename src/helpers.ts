@@ -34,16 +34,19 @@ export function escapeRegExp(s: string): string {
 }
 
 /**
- * Render a JS value as a Ruby expression that evaluates to JSON.parse of the
- * value's canonical JSON encoding.  Base64 keeps the embedded literal safe
- * from any input — no backslashes, quotes, `#{...}`, or newlines to escape.
- * Replaces the previous `%q{${JSON.stringify(...)}}` pattern, which silently
- * mangled any backslash in the JSON (Ruby's `%q{}` does not preserve `\\`).
+ * Render a JS value as a base64-encoded JSON string literal for embedding in
+ * generated Ruby. Base64 keeps the literal safe from any input — no
+ * backslashes, quotes, `#{...}`, or newlines to escape (the earlier
+ * `%q{...}` form silently mangled backslashes) — and the runtime decodes it
+ * once and caches, rather than per call.
  */
 export function rubyJsonLiteral(value: any): string {
   const json = JSON.stringify(value ?? { primitive: 'any' });
   const b64 = Buffer.from(json, 'utf-8').toString('base64');
-  return `JSON.parse(Base64.strict_decode64("${b64}"))`;
+  // Just the payload: the runtime decodes and caches it
+  // (Jsii::Type.decode_type_ref). Emitting the decode inline ran a Base64
+  // decode plus a JSON parse on every type-checked argument of every call.
+  return `"${b64}"`;
 }
 
 /**

@@ -59,7 +59,7 @@ describe('escapeRegExp', () => {
 describe('rubyJsonLiteral', () => {
   function roundTrip(value: unknown): unknown {
     const expr = rubyJsonLiteral(value);
-    const m = /^JSON\.parse\(Base64\.strict_decode64\("([A-Za-z0-9+/=]+)"\)\)$/.exec(expr);
+    const m = /^"([A-Za-z0-9+/=]+)"$/.exec(expr);
     assert.ok(m, `unexpected literal shape: ${expr}`);
     return JSON.parse(Buffer.from(m![1], 'base64').toString('utf-8'));
   }
@@ -220,5 +220,20 @@ describe('rubyModuleName performance', () => {
     assert.equal(rubyModuleName('awsS3Bucket', ['AWS', 'S3']), 'AWSS3Bucket');
     assert.equal(rubyModuleName('awsS3Bucket', []), 'AwsS3Bucket');
     assert.equal(rubyModuleName('awsS3Bucket', ['AWS']), 'AWSS3Bucket');
+  });
+});
+
+describe('rubyJsonLiteral emits an encoded spec, not an inline decode', () => {
+  test('is a bare base64 string literal', () => {
+    // Emitting `JSON.parse(Base64.strict_decode64("..."))` put a decode and a
+    // parse on EVERY type-checked argument of every call at runtime. The
+    // runtime now decodes and caches (Jsii::Type.decode_type_ref), so the
+    // call site only needs the encoded payload.
+    const literal = rubyJsonLiteral({ primitive: 'string' });
+    assert.match(literal, /^"[A-Za-z0-9+/=]+"$/, `unexpected literal: ${literal}`);
+    assert.ok(!literal.includes('JSON.parse'), 'inline decode survived');
+
+    const decoded = JSON.parse(Buffer.from(literal.slice(1, -1), 'base64').toString('utf-8'));
+    assert.deepEqual(decoded, { primitive: 'string' });
   });
 });

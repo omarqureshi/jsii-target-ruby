@@ -9,8 +9,13 @@
 # Must run AFTER gen-module-landing.rb, so namespace landings exist for the check.
 #
 #   inject-crumb.rb <out-dir>
+require_relative 'root_module'
+
 out_dir = ARGV[0]
-awscdk = File.join(out_dir, 'AWSCDK')
+# The root module name is library data; detect it from the built tree rather
+# than hardcoding the CDK's.
+root_module = DocsRoot.detect(out_dir)
+awscdk = File.join(out_dir, root_module)
 esc = ->(s) { s.to_s.gsub('&', '&amp;').gsub('<', '&lt;') }
 count = 0
 
@@ -18,13 +23,13 @@ Dir.glob(File.join(awscdk, '**', '*.html')).each do |f|
   next if File.basename(f) == 'index.html'
 
   comps = f.sub("#{awscdk}/", '').split('/')   # [seg1, ..., segK, "Class.html"]
-  next if comps.empty?                           # (root types are AWSCDK/<Type>.html: segs == [])
+  next if comps.empty?                           # (root types are <Root>/<Type>.html: segs == [])
 
   segs = comps[0..-2]                            # dir segments (empty for a root type page)
   k = segs.length
   cls = File.basename(f, '.html')
 
-  parts = [%(<a href="#{'../' * k}index.html">AWSCDK</a>)]
+  parts = [%(<a href="#{'../' * k}index.html">#{root_module}</a>)]
   segs.each_with_index do |seg, i|
     seg_dir = File.join(awscdk, *segs[0..i])
     link =

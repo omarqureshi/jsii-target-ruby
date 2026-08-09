@@ -157,3 +157,29 @@ RSpec.describe 'Runtime Type Validation' do
   end
 
 end
+
+RSpec.describe 'Jsii::Type.check_type — type spec decoding' do
+  # Generated call sites embed the type spec as base64 JSON. Decoding and
+  # parsing it at every call put that work on every type-checked argument of
+  # every method call at runtime; passing the encoded string lets the runtime
+  # decode once and cache.
+  let(:encoded) { Base64.strict_encode64({ 'primitive' => 'string' }.to_json) }
+
+  it 'accepts the encoded form and validates with it' do
+    expect { Jsii::Type.check_type('ok', encoded, 'arg') }.not_to raise_error
+    expect { Jsii::Type.check_type(42, encoded, 'arg') }.to raise_error(TypeError, /arg/)
+  end
+
+  it 'still accepts an already-decoded Hash' do
+    expect { Jsii::Type.check_type('ok', { 'primitive' => 'string' }, 'arg') }.not_to raise_error
+  end
+
+  it 'decodes a given spec only once' do
+    # Identity, not a JSON.parse spy: the kernel's reader thread calls
+    # JSON.parse concurrently, and stubbing it globally kills the sidecar.
+    first = Jsii::Type.send(:decode_type_ref, encoded)
+    second = Jsii::Type.send(:decode_type_ref, encoded)
+    expect(second).to equal(first)
+    expect(first).to be_frozen
+  end
+end

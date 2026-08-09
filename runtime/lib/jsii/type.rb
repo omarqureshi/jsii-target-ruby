@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+require 'base64'
+require 'json'
+require 'monitor'
+
 require 'date'
 require 'time'
 
@@ -16,6 +20,7 @@ module Jsii
     # @return [nil] when the value satisfies the type.
     # @raise [TypeError] when the value does not match the type reference.
     def self.check_type(value, type_ref, argname = 'argument')
+      type_ref = decode_type_ref(type_ref) if type_ref.is_a?(String)
       return check_primitive(value, type_ref['primitive'], argname) if type_ref.key?('primitive')
       return check_fqn(value, type_ref['fqn'], argname) if type_ref.key?('fqn')
       return check_collection(value, type_ref['collection'], argname) if type_ref.key?('collection')
@@ -23,6 +28,26 @@ module Jsii
 
       raise TypeError, "Unknown type reference: #{type_ref.inspect}"
     end
+
+    # Decode (and cache) a base64-encoded JSON type reference.
+    #
+    # Generated call sites embed their type spec as base64 JSON; decoding it
+    # inline meant a Base64 decode plus a JSON parse on every type-checked
+    # argument of every call. The specs are a small fixed set per library, so
+    # they are decoded once and reused.
+    #
+    # @api private
+    # @param encoded [String] base64-encoded JSON.
+    # @return [Hash] the decoded type reference (frozen).
+    def self.decode_type_ref(encoded)
+      TYPE_REF_MONITOR.synchronize do
+        TYPE_REF_CACHE[encoded] ||= JSON.parse(Base64.strict_decode64(encoded)).freeze
+      end
+    end
+
+    TYPE_REF_CACHE = {}
+    TYPE_REF_MONITOR = Monitor.new
+    private_constant :TYPE_REF_CACHE, :TYPE_REF_MONITOR
 
     class << self
       private
