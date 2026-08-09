@@ -336,9 +336,7 @@ module Jsii
         return runtime.split(' ')
       end
 
-      dev_null = Gem.win_platform? ? 'NUL' : '/dev/null'
-      path_checker = Gem.win_platform? ? 'where' : 'which'
-      return ['jsii-runtime'] if system("#{path_checker} jsii-runtime > #{dev_null} 2>&1")
+      return ['jsii-runtime'] if jsii_runtime_on_path?
 
       node_path = resolve_via_node
       return ['node', node_path] if node_path
@@ -349,6 +347,30 @@ module Jsii
       raise StandardError,
             'Unable to locate jsii-runtime executable. ' \
             'Please ensure @jsii/runtime is installed or set JSII_RUNTIME.'
+    end
+
+    # Whether an executable `jsii-runtime` exists on `PATH`.
+    #
+    # Scans `PATH` directly rather than shelling out to `which`/`where`: those
+    # are not guaranteed to exist in minimal container images, where their
+    # absence would look like "runtime not installed" and send resolution down
+    # the slower Node/npm fallbacks (or off the end into the raise).
+    #
+    # @return [Boolean]
+    def jsii_runtime_on_path?
+      names = if Gem.win_platform?
+                exts = (ENV['PATHEXT'] || '.COM;.EXE;.BAT;.CMD').split(';').reject(&:empty?)
+                exts.map { |ext| "jsii-runtime#{ext}" }
+              else
+                ['jsii-runtime']
+              end
+
+      ENV.fetch('PATH', '').split(File::PATH_SEPARATOR).reject(&:empty?).any? do |dir|
+        names.any? do |name|
+          candidate = File.join(dir, name)
+          File.file?(candidate) && File.executable?(candidate)
+        end
+      end
     end
 
     # Ask Node to resolve the `@jsii/runtime` package and return the

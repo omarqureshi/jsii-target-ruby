@@ -137,11 +137,40 @@ Enforced in: `compliance/spec/compliance/async_overrides_spec.rb`,
 `sync_overrides_spec.rb`, `property_overrides_spec.rb`,
 `spec/unit/kernel_concurrency_spec.rb`, `spec/unit/callbacks_spec.rb`.
 
+## Runtime performance
+
+Optimised where measurement justified it: `Jsii::Utils` memoizes name
+conversions and callable coercions, `decode_type_ref` caches its parse, and
+the object registry keeps a reverse index instead of scanning (that index is
+qualified through `Jsii::Object` — memoizing it per receiver gives each class
+its own empty index and makes every generated method look like a user
+override).
+
+Deliberately *not* optimised: `Jsii::Object#jsii_interfaces` walks
+`singleton_class.ancestors` on every serialization. Measured at 2.5µs per
+walk on a CDK-shaped ancestry (15 ancestors, 2 interface modules), so even
+100k serializations cost 0.25s against synth times dominated by kernel IPC.
+Caching it would have to be invalidated when an instance is `extend`ed after
+construction, and Ruby offers no hook for that — a rare silent wrong answer
+in exchange for an unmeasurable gain.
+
+Likewise `resolve_jsii_runtime` runs at most three probes, once per process.
+It scans `PATH` in pure Ruby rather than shelling out to `which`/`where` —
+not for speed, but because those binaries are absent in minimal container
+images, where their absence reads as "runtime not installed".
+
+Enforced in: `spec/unit/utils_spec.rb`, `spec/unit/type_spec.rb`,
+`spec/unit/registry_pending_object_spec.rb`,
+`spec/unit/runtime_resolution_spec.rb`.
+
 ## Documentation
 
 YARD comments (CommonMark rendered with redcarpet), `@example` blocks
-carrying rosetta-translated Ruby (TypeScript verbatim until the rosetta
-registry path is active), RBS signatures under `sig/` for editor support
+carrying rosetta-translated Ruby (translation requires that jsii-pacmak and
+this plugin resolve the *same* jsii-rosetta — see
+`scripts/link-toolchain.sh`; the bootstrap action fails the build when they
+diverge, because the failure mode is otherwise silent TypeScript inside
+Ruby fences), RBS signatures under `sig/` for editor support
 and static checking, and lazy `autoload` trees so requiring a gem with 622
 submodules stays fast. The docs site (single-registry YARD build with
 cross-module linking + assembly-driven index) builds from `docs-gen/` via
