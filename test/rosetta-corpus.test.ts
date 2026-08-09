@@ -19,8 +19,15 @@ const EXPECTATIONS = path.resolve(__dirname, '..', '..', 'test', 'translations')
 
 // The visitor resolves unresolvable type references against the target-config
 // overlay (as the docs pipeline does in production) — run the corpus the same
-// way so namespaces in expectations match deployed behavior.
-process.env.JSII_RUBY_TARGET_CONFIG = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+// way so namespaces in expectations match deployed behavior. Scoped with
+// before/after like rosetta-names.test.ts, so nothing leaks in a
+// shared-process runner.
+before(() => {
+  process.env.JSII_RUBY_TARGET_CONFIG = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+});
+after(() => {
+  delete process.env.JSII_RUBY_TARGET_CONFIG;
+});
 
 // Snippets not (yet) in the upstream corpus: full .ts + .rb pairs, candidates
 // for upstreaming. Expectations sit next to the snippets.

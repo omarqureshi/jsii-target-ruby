@@ -136,16 +136,6 @@ export class RubyGenerator extends Generator {
   }
 
   /**
-   * Rosetta translates fenced code blocks, but not inline `code` references in the
-   * prose (e.g. the `bucketArn` / `arnForObjects(pattern)` list in the S3 README).
-   * Rewrite those to Ruby: a bare camelCase identifier — optionally followed by a
-   * call's parentheses — becomes snake_case via the same `toSnakeCase` the member
-   * generator uses, so `bucketArn` -> `bucket_arn` and `arnForObjects(pattern)` ->
-   * `arn_for_objects(pattern)`. Everything else is left untouched: fenced blocks
-   * (already translated), and anything that isn't a bare identifier — ARNs, URLs and
-   * names (they carry `:` `/` `-` `.`), PascalCase type names, ALL_CAPS enum members.
-   */
-  /**
    * Normalize a type reference to its raw `spec.TypeReference` shape.
    * Call sites hold two shapes: jsii-reflect `TypeReference` instances
    * (which wrap the raw spec under `.spec`) for members coming off
@@ -239,14 +229,6 @@ export class RubyGenerator extends Generator {
     return 'Object';
   }
 
-  /**
-   * Render a jsii type reference as an RBS type expression (for `sig/`
-   * declarations).  Same recursion as {@link rubyDocType}, but RBS surface
-   * syntax and honest escape hatches: `any`/`json` become `untyped` (not a
-   * concrete class), booleans are the `bool` built-in, collections use
-   * `[...]`, unions use `|`.  When `optional` is set, the result is wrapped
-   * nilable (`T?`).
-   */
   /**
    * Emit a block of text as `#`-prefixed comment lines.
    */
@@ -1477,28 +1459,6 @@ export class RubyGenerator extends Generator {
     return helpers.rubyName(method.name);
   }
 
-  /**
-   * Filter a member list to resolve Ruby-name collisions.  When two members
-   * map to the same Ruby identifier, drop deprecated members; if exactly
-   * one non-deprecated member survives, use it.  Throws if all colliding
-   * members are deprecated, or if more than one non-deprecated member
-   * remains (a generator bug — these cases shouldn't reach this point).
-   *
-   * Mirrors Python's `prepareMembers`.  See
-   * https://github.com/aws/jsii/issues/2508 for the motivating fixture.
-   */
-  /**
-   * Resolve *cross-category* Ruby-name collisions: a property and a method
-   * (merged onto one type from different interfaces or across the
-   * hierarchy) that map to the same Ruby identifier would otherwise emit
-   * two `def foo` — last definition silently wins.  Runs after the
-   * per-category {@link dedupByRubyName} passes, with the same policy:
-   * deprecated members lose to non-deprecated ones; ambiguity throws.
-   *
-   * Statics and instance members live in different Ruby namespaces
-   * (`def self.foo` vs `def foo`), so collisions are only checked within
-   * the same staticness.
-   */
   private rubyModuleForAssembly(name: string): string {
     if (name === this.assembly.name) {
       return this.assembly.targets?.ruby?.module ?? this.rubyModuleName(name);

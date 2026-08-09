@@ -209,10 +209,7 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     // that declares a custom gem name gets correct requires in its docs.
     const parts = node.packageName.split('/');
     const pkg = node.packageName.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
-    const gemName = rubyGemName({
-      name: pkg,
-      targets: loadRubyTargetOverlay()?.[pkg]?.gem !== undefined ? ({ ruby: { gem: loadRubyTargetOverlay()![pkg].gem } } as any) : undefined,
-    });
+    const gemName = loadRubyTargetOverlay()?.[pkg]?.gem ?? rubyGemName({ name: pkg });
     return this.renderRequire(`require '${gemName}'`);
   }
 
