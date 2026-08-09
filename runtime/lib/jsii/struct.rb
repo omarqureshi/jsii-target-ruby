@@ -84,6 +84,23 @@ module Jsii
     end
     alias eql? ==
 
+    # Read a member the way a Hash would.  Rosetta renders struct-typed
+    # property reads as `s[:member]` (which is also how a Ruby caller writes
+    # them while the value is still a hash literal), so a struct that has
+    # crossed the kernel boundary has to answer the same form.
+    #
+    # @param key [Symbol, String] the member name in snake_case.
+    # @return [Object, nil] the member value.
+    # @raise [NameError] when the struct has no such member.
+    def [](key)
+      reader = key.to_sym
+      unless self.class.method_defined?(reader) || respond_to?(reader)
+        raise NameError.new("#{self.class} has no member #{key}", reader)
+      end
+
+      public_send(reader)
+    end
+
     # @return [Integer] a hash code derived from {#to_jsii}, consistent with {#==}.
     def hash
       to_jsii.hash

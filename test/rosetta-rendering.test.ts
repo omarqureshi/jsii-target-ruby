@@ -77,3 +77,21 @@ function isParseableRuby(source: string): boolean {
   const res = spawnSync('ruby', ['-c'], { input: source, encoding: 'utf-8' });
   return res.status === 0;
 }
+
+describe('struct property reads', () => {
+  test('renders the hash-index form, which Jsii::Struct answers', () => {
+    // Two shapes reach a struct-typed read in a translated example: a hash
+    // literal the reader wrote, and a hydrated Jsii::Struct returned by the
+    // library. `s[:member]` is the form that works for both — Jsii::Struct#[]
+    // exists for exactly this reason (compliance/spec/unit/type_spec.rb,
+    // 'Jsii::Struct hash-style reads').
+    const ruby = toRuby(
+      [
+        'interface MyProps { readonly bucketName: string; }',
+        'declare const props: MyProps;',
+        'console.log(props.bucketName);',
+      ].join('\n'),
+    );
+    assert.match(ruby, /props\[:bucket_name\]/, `expected hash-index read in:\n${ruby}`);
+  });
+});

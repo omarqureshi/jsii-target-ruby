@@ -58,3 +58,20 @@ RSpec.describe 'native interface implementations' do
     end
   end
 end
+
+RSpec.describe 'interfaces attached with extend' do
+  # jsii_interfaces (used when serializing a Jsii::Object) inspects
+  # singleton_class.ancestors, so `obj.extend(SomeInterface)` counts. The
+  # native-implementation path inspected value.class.ancestors instead, so the
+  # same object serialized as a plain Ruby value saw no interfaces at all and
+  # was rejected as unserializable.
+  it 'recognises an interface attached to a single instance' do
+    obj = Object.new
+    obj.define_singleton_method(:hello) { 'hi' }
+    obj.define_singleton_method(:_next) { 42 }
+    obj.extend(JsiiCalc::IFriendlyRandomGenerator)
+
+    expect { Jsii::Serializer.dump(obj) }.not_to raise_error
+    expect(Jsii::Serializer.dump(obj)).to have_key('$jsii.byref')
+  end
+end

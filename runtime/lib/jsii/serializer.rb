@@ -151,9 +151,17 @@ module Jsii
     # @param value [Object] the value to test.
     # @return [Boolean] `true` if the value's class implements at least one JSII interface.
     def jsii_native_implementation?(value)
-      return false unless value.respond_to?(:class)
+      # singleton_class, not class: an interface attached to one instance with
+      # `extend` lives in the singleton's ancestry. Matches
+      # Kernel::Callbacks#value_ancestors, which discovers the overrides.
+      return false unless value.respond_to?(:singleton_class)
 
-      klass = value.class
+      klass = begin
+        value.singleton_class
+      rescue TypeError
+        # Immediates (Integer, Symbol, ...) have no singleton class.
+        return false
+      end
       return false unless klass.respond_to?(:ancestors)
 
       klass.ancestors.any? do |ancestor|

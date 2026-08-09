@@ -276,7 +276,12 @@ function emitRbsInterface(
     const t = rbsType(host, host.typeRefSpec(p.type), p.optional);
     lines.push(`  attr_reader ${rubyName(p.name)}: ${t}`);
     if (!p.immutable) {
-      lines.push(`  attr_writer ${rubyName(p.name)}: ${t}`);
+      // Writers are INPUT positions: the generated setter coerces a hash
+      // literal into the struct, so the signature has to admit it too —
+      // otherwise a type checker rejects the idiomatic call the docs show.
+      lines.push(
+        `  attr_writer ${rubyName(p.name)}: ${rbsParamType(host, host.typeRefSpec(p.type), p.optional)}`,
+      );
     }
   }
   for (const m of methods) {
@@ -336,7 +341,12 @@ function emitRbsClass(host: RbsHost, typeSpec: reflect.ClassType, lines: string[
     }
     lines.push(`  attr_reader ${rubyName(p.name)}: ${t}`);
     if (!p.immutable) {
-      lines.push(`  attr_writer ${rubyName(p.name)}: ${t}`);
+      // Writers are INPUT positions: the generated setter coerces a hash
+      // literal into the struct, so the signature has to admit it too —
+      // otherwise a type checker rejects the idiomatic call the docs show.
+      lines.push(
+        `  attr_writer ${rubyName(p.name)}: ${rbsParamType(host, host.typeRefSpec(p.type), p.optional)}`,
+      );
     }
   }
   for (const m of methods) {

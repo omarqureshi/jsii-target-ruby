@@ -60,3 +60,29 @@ RSpec.describe Jsii::Type do
     end
   end
 end
+
+RSpec.describe 'Jsii::Struct hash-style reads' do
+  # Rosetta renders struct-typed property reads as `s[:member]`, which is also
+  # how a Ruby user writes them when the value is still a hash literal. A
+  # struct that crossed the kernel boundary is a hydrated Jsii::Struct, so it
+  # has to answer the same form — otherwise translated examples raise
+  # NoMethodError on values returned by the library.
+  let(:struct) { JsiiCalc::StructA.new(required_string: 'hello', optional_number: 42) }
+
+  it 'reads a member by symbol' do
+    expect(struct[:required_string]).to eq('hello')
+    expect(struct[:optional_number]).to eq(42)
+  end
+
+  it 'reads a member by string' do
+    expect(struct['required_string']).to eq('hello')
+  end
+
+  it 'returns nil for an unset optional member' do
+    expect(struct[:optional_string]).to be_nil
+  end
+
+  it 'raises for a member the struct does not have' do
+    expect { struct[:nope] }.to raise_error(NameError, /nope/)
+  end
+end

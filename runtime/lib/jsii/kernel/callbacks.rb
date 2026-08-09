@@ -132,7 +132,11 @@ module Jsii
       # @param value [Object] the value to introspect.
       # @return [Array<Module>] matching ancestor modules in order.
       def value_ancestors(value)
-        value.class.ancestors.select do |m|
+        # singleton_class, not class: an interface attached to one instance
+        # with `extend` is in the singleton's ancestry only. Jsii::Object's
+        # own jsii_interfaces already looks there, so using `class` here made
+        # the two paths disagree about what a value implements.
+        value.singleton_class.ancestors.select do |m|
           m.instance_of?(Module) && m.respond_to?(:jsii_fqn)
         end
       end
@@ -205,7 +209,10 @@ module Jsii
         # including it satisfies the check. What distinguishes an actual
         # implementation is its OWNER — user code, rather than a generated
         # module (those answer to jsii_fqn).
-        owner = value.class.method_defined?(ruby_name) ? value.method(ruby_name).owner : nil
+        # respond_to?/method on the INSTANCE, not the class: an implementation
+        # may be a singleton method (`define_singleton_method`, or a module
+        # attached with `extend`), which value.class never sees.
+        owner = value.respond_to?(ruby_name) ? value.method(ruby_name).owner : nil
         implemented = !owner.nil? && !owner.respond_to?(:jsii_fqn)
 
         unless implemented

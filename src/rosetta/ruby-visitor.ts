@@ -411,6 +411,10 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
       }
     }
 
+    // Struct-typed reads render as `s[:member]`, which is how a Ruby user
+    // writes them while the value is still a hash literal. Jsii::Struct
+    // answers the same form (see Jsii::Struct#[]), so the rendering is
+    // correct for hydrated structs coming back from the kernel too.
     const exprType = context.typeOfExpression(node.expression);
     if (exprType && analyzeStructType(context.typeChecker, exprType) !== false) {
       return new OTree([context.convert(node.expression), '[:', toSnakeCase(node.name.text), ']']);
