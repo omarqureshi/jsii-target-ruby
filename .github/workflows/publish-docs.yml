@@ -137,6 +137,10 @@ jobs:
           bash docs-gen/build-module-docs.sh "$GEM_LIB" "$OUT"
           ruby docs-gen/gen-module-landing.rb "$ASSEMBLY" "$OUT"
           ruby docs-gen/inject-crumb.rb "$OUT"
+          # Statics are read as constants (Jsii::StaticConstants); YARD lists
+          # them as the singleton methods they are defined as. Show the
+          # spelling the docs actually teach.
+          ruby docs-gen/constantize-static-reads.rb "$OUT"
           ruby docs-gen/gen-index.rb "$ASSEMBLY" "$OUT"
           echo "DOCS_OUT=$OUT" >> "$GITHUB_ENV"
           # Ask the same derivation the generators use rather than naming
