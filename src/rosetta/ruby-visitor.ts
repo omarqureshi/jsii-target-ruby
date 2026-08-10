@@ -398,7 +398,22 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     if (!/^[A-Z]/.test(name) || /^[A-Z0-9_]+$/.test(name)) {
       return undefined;
     }
-    return rubyPathForTypeName(name, aliasHint);
+    return rubyPathForTypeName(name, aliasHint, this.importedSubmodules());
+  }
+
+  /**
+   * The submodules this source file imports, as the oracle names them.
+   *
+   * What the snippet imports is evidence about what it is demonstrating: a
+   * file that imports aws_opensearchservice and then names `EngineVersion`
+   * with no alias means that one, not `aws_rds`'s.
+   */
+  private importedSubmodules(): Set<string> {
+    const fqns = [
+      ...this.importedModuleFqns.values(),
+      ...[...this.importedTypeModules.values()].map((t) => t.fqn),
+    ];
+    return new Set(fqns.map((fqn) => fqn.split('.').slice(1).join('.')));
   }
 
   /**

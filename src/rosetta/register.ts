@@ -36,7 +36,8 @@ export function registerRosettaLanguage(): void {
       // reuses a tablet. Same convention as the built-in visitors
       // (`PythonVisitor.VERSION`).
       //   2: references resolved through the assembly's own type names
-      version: '2',
+      //   3: ambiguous names narrowed by the snippet's imports
+      version: '3',
       createVisitor: () => new RubyVisitor(),
     });
   } catch (e: any) {

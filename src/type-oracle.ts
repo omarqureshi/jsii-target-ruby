@@ -182,8 +182,17 @@ export function rubyTypeKind(rubyPath: string): RubyTypeKind | undefined {
  * and otherwise resolves to nothing. Guessing between `aws_events.Schedule` and
  * `aws_applicationautoscaling.Schedule` would put a plausible but wrong
  * constant in the docs, which is worse than leaving the alias alone.
+ *
+ * `inScope` is the set of submodules the snippet imports. A name with no alias
+ * at all — the common shape, since the import that would bind it lives in a
+ * fixture the package does not ship — is still narrowed by what the snippet is
+ * demonstrably working with.
  */
-export function rubyPathForTypeName(typeName: string, aliasHint?: string): string | undefined {
+export function rubyPathForTypeName(
+  typeName: string,
+  aliasHint?: string,
+  inScope?: ReadonlySet<string>,
+): string | undefined {
   if (!environmentLoaded) {
     environmentLoaded = true;
     loadFromEnvironment();
@@ -196,7 +205,8 @@ export function rubyPathForTypeName(typeName: string, aliasHint?: string): strin
 
   return (
     onlyPath(found) ??
-    (aliasHint ? onlyPath(found.filter((l) => resembles(l, aliasHint))) : undefined)
+    (aliasHint ? onlyPath(found.filter((l) => resembles(l, aliasHint))) : undefined) ??
+    (inScope ? onlyPath(found.filter((l) => inScope.has(l.submodule))) : undefined)
   );
 }
 

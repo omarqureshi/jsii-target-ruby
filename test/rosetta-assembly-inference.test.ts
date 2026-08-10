@@ -131,6 +131,31 @@ describe('references whose alias names no submodule', () => {
     assert.match(toRuby("new DeliveryStream(this, 'S');"), /AWSCDK::KinesisFirehose::DeliveryStream/);
   });
 
+  test("an ambiguous bare name is narrowed by the snippet's own imports", () => {
+    // The published example imports opensearch and uses it, then names
+    // `EngineVersion` bare because the import that would bind it lives in a
+    // rosetta fixture the package does not ship. Both declarations of the name
+    // are candidates, but only one is in a module this snippet is working in.
+    const ruby = toRuby(
+      [
+        "import * as opensearch from 'aws-cdk-lib/aws-opensearchservice';",
+        'const version = EngineVersion.OPENSEARCH_1_3;',
+      ].join('\n'),
+    );
+    assert.match(ruby, /AWSCDK::OpenSearchService::EngineVersion\.OPENSEARCH_1_3/);
+  });
+
+  test('imports do not narrow when more than one of them declares the name', () => {
+    const ruby = toRuby(
+      [
+        "import * as opensearch from 'aws-cdk-lib/aws-opensearchservice';",
+        "import * as rds from 'aws-cdk-lib/aws-rds';",
+        'const version = EngineVersion.MYSQL;',
+      ].join('\n'),
+    );
+    assert.ok(!/AWSCDK::/.test(ruby), `guessed between two imported modules:\n${ruby}`);
+  });
+
   test('an ambiguous type name the alias cannot narrow is left alone', () => {
     // Guessing between aws_applicationautoscaling and aws_events would be a
     // coin toss, and a wrong module is worse than an unqualified one.
