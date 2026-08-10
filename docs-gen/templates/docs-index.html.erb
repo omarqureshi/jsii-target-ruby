@@ -49,8 +49,7 @@
       <li><strong>Modules</strong> are PascalCase under <code>AWSCDK</code>: <code>AWSCDK::S3</code>, <code>AWSCDK::DynamoDB</code>, <code>AWSCDK::APIGatewayv2</code>.</li>
       <li><strong>AWS acronyms are uppercased — in class names too.</strong> <code>RestApi</code> → <code>AWSCDK::APIGateway::RestAPI</code>; <code>FunctionUrl</code> → <code>AWSCDK::Lambda::FunctionURL</code>; <code>…Arn</code> → <code>…ARN</code>.</li>
       <li><strong>Props</strong> are a Ruby <code>Hash</code> with <strong>snake_case</strong> keys — <code>removal_policy:</code>, not <code>removalPolicy:</code>.</li>
-      <li><strong>Enums</strong> are constants under <code>::</code>: <code>AWSCDK::RemovalPolicy::DESTROY</code>.</li>
-      <li><strong>Static properties</strong> are method calls with a <code>.</code>: <code>AWSCDK::Lambda::Runtime.RUBY_4_0</code>.</li>
+      <li><strong>Enum members and static properties</strong> are both constants, reached with <code>::</code>: <code>AWSCDK::RemovalPolicy::DESTROY</code>, <code>AWSCDK::Lambda::Runtime::RUBY_4_0</code>. The reference lists a static as a class method (<code>.RUBY_4_0</code>) because that is how it is defined — that spelling works too, but <code>::</code> is the one to reach for.</li>
     </ul>
   </section>
 <% unless core_groups.empty? -%>
