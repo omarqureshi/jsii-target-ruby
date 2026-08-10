@@ -1,3 +1,4 @@
+import { registerAssemblyLocations } from '../type-oracle';
 import { RubyVisitor } from './ruby-visitor';
 
 /**
@@ -40,6 +41,13 @@ export function registerRosettaLanguage(): void {
       //   4: static readonly members read as constants (`Type::NAME`)
       version: '4',
       createVisitor: () => new RubyVisitor(),
+      // Rosetta translates in worker threads, which never run the generator,
+      // so this is how a worker learns which assembly a snippet documents —
+      // needed to resolve a reference the snippet does not typecheck well
+      // enough to resolve itself. Guarded: an older jsii-rosetta simply never
+      // calls it, and the generator still registers assemblies inline.
+      prepare: (context: { assemblyLocations?: readonly string[] }) =>
+        registerAssemblyLocations(context?.assemblyLocations ?? []),
     });
   } catch (e: any) {
     // Already registered (e.g. the module was loaded twice): fine.

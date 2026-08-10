@@ -95,19 +95,16 @@ function submoduleOf(parts: readonly string[], submoduleFqns: ReadonlySet<string
 }
 
 /**
- * Assemblies named by `JSII_RUBY_ORACLE_ASSEMBLIES` (a PATH-style list of
- * package directories).
+ * Index the assemblies at these package directories.
  *
- * Rosetta translates in worker threads, which never run the generator, so
- * there is nothing there to register an assembly — the environment is how a
- * worker is told which assemblies it is translating examples for.
+ * Rosetta translates in worker threads, which never run the generator, so this
+ * is how a worker learns which assemblies it is translating examples for —
+ * rosetta hands the locations to every registered language before translating
+ * (`VisitorFactory.prepare`). Idempotent, because a worker handles many
+ * batches and is told each time.
  */
-function loadFromEnvironment(): void {
-  const configured = process.env.JSII_RUBY_ORACLE_ASSEMBLIES;
-  if (!configured) {
-    return;
-  }
-  for (const dir of configured.split(path.delimiter).filter(Boolean)) {
+export function registerAssemblyLocations(dirs: readonly string[]): void {
+  for (const dir of dirs) {
     try {
       registerAssemblyTypes(readAssembly(dir));
     } catch (e: any) {
@@ -145,8 +142,6 @@ function readAssembly(dir: string): spec.Assembly {
   return parsed as spec.Assembly;
 }
 
-let environmentLoaded = false;
-
 /**
  * The Ruby constant path for a TypeScript type name, when the assemblies
  * indexed here name exactly one type by it.
@@ -168,11 +163,6 @@ export function rubyPathForTypeName(
   aliasHint?: string,
   inScope?: ReadonlySet<string>,
 ): string | undefined {
-  if (!environmentLoaded) {
-    environmentLoaded = true;
-    loadFromEnvironment();
-  }
-
   const found = BY_TYPE_NAME.get(typeName);
   if (found === undefined) {
     return undefined;
@@ -215,5 +205,4 @@ function resembles(location: TypeLocation, alias: string): boolean {
 export function resetTypeOracle(): void {
   BY_TYPE_NAME.clear();
   LOADED_ASSEMBLIES.clear();
-  environmentLoaded = false;
 }
