@@ -8,19 +8,6 @@ import * as spec from '@jsii/spec';
 import { resolveRubyModulePath } from './helpers';
 import { loadRubyTargetOverlay } from './target-config';
 
-/**
- * What kind of Ruby constant a type's members are reached through.
- *
- * An enum member is a real constant (`BucketEncryption::S3_MANAGED`); a static
- * readonly property is generated as a class method (`def self.NODEJS_LATEST`),
- * so `Runtime::NODEJS_LATEST` raises NameError and only `Runtime.NODEJS_LATEST`
- * works. In a snippet that does not typecheck the two are indistinguishable —
- * both are SCREAMING_SNAKE after a PascalCase name — so the assembly is the
- * only thing that can tell them apart.
- */
-export type RubyTypeKind = 'enum' | 'other';
-
-const KINDS = new Map<string, RubyTypeKind>();
 const LOADED_ASSEMBLIES = new Set<string>();
 
 /** Where a type declared by an assembly lives. */
@@ -59,7 +46,8 @@ function rubyPathFor(fqn: string): string {
 }
 
 /**
- * Index an assembly's types so the visitor can tell an enum from a class.
+ * Index an assembly's types so the visitor can resolve a reference by the name
+ * of the type it reaches, when the import alias says nothing.
  * Idempotent — the same assembly may be offered by both the generator and the
  * environment.
  */
@@ -71,9 +59,8 @@ export function registerAssemblyTypes(assembly: spec.Assembly): void {
 
   const submoduleFqns = new Set(Object.keys(assembly.submodules ?? {}));
 
-  for (const [fqn, type] of Object.entries(assembly.types ?? {})) {
+  for (const fqn of Object.keys(assembly.types ?? {})) {
     const rubyPath = rubyPathFor(fqn);
-    KINDS.set(rubyPath, type.kind === spec.TypeKind.Enum ? 'enum' : 'other');
 
     const parts = fqn.split('.');
     const name = parts[parts.length - 1];
@@ -133,13 +120,13 @@ function loadFromEnvironment(): void {
 }
 
 /**
- * Read an assembly for its type kinds alone.
+ * Read an assembly for the names of the types it declares.
  *
  * Deliberately not `spec.loadAssemblyFromPath`: that validates, and rejects
  * aws-cdk-lib outright for using schema features this toolchain does not
  * declare support for ("unsupported feature(s): intersection-types"). Nothing
- * here depends on the assembly being fully understood — only on
- * `types[fqn].kind` — so validation would trade the whole feature for nothing.
+ * here depends on the assembly being fully understood — only on the keys of
+ * `types` — so validation would trade the whole feature for nothing.
  *
  * A package may ship a redirect stub at `.jsii` pointing at a compressed
  * `.jsii.gz`; reading the stub yields a parseable assembly with no types at
@@ -159,18 +146,6 @@ function readAssembly(dir: string): spec.Assembly {
 }
 
 let environmentLoaded = false;
-
-/**
- * The kind of the type at a Ruby path, or undefined when nothing is known
- * about it — in which case callers keep whatever they did before.
- */
-export function rubyTypeKind(rubyPath: string): RubyTypeKind | undefined {
-  if (!environmentLoaded) {
-    environmentLoaded = true;
-    loadFromEnvironment();
-  }
-  return KINDS.get(rubyPath);
-}
 
 /**
  * The Ruby constant path for a TypeScript type name, when the assemblies
@@ -238,7 +213,6 @@ function resembles(location: TypeLocation, alias: string): boolean {
 
 /** Test hook: drop everything indexed so far. */
 export function resetTypeOracle(): void {
-  KINDS.clear();
   BY_TYPE_NAME.clear();
   LOADED_ASSEMBLIES.clear();
   environmentLoaded = false;

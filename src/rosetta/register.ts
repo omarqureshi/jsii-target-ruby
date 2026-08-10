@@ -37,7 +37,8 @@ export function registerRosettaLanguage(): void {
       // (`PythonVisitor.VERSION`).
       //   2: references resolved through the assembly's own type names
       //   3: ambiguous names narrowed by the snippet's imports
-      version: '3',
+      //   4: static readonly members read as constants (`Type::NAME`)
+      version: '4',
       createVisitor: () => new RubyVisitor(),
     });
   } catch (e: any) {

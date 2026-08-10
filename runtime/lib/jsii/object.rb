@@ -4,6 +4,7 @@ require 'jsii/object/registry'
 require 'jsii/object/overrides'
 require 'jsii/object/dynamic_invocation'
 require 'jsii/object/kernel_forwarding'
+require 'jsii/object/static_constants'
 
 module Jsii
   # Extension to allow modules (Interfaces/Structs) to have jsii_fqn
@@ -17,6 +18,7 @@ module Jsii
   class Object
     extend FqnExtension
     extend Registry
+    extend StaticConstants
 
     include KernelForwarding
     include Overrides

@@ -142,15 +142,17 @@ describe('static members', () => {
     assert.ok(!ruby.includes('attr_reader :foo'));
   });
 
-  test('static readonly (const) property access uses `.` + the constant name, not dropped', () => {
+  test('static readonly (const) property access keeps the constant name, not dropped', () => {
     // Regression: `BlockPublicAccess.BLOCK_ALL` used to render as just the type
     // (`...BlockPublicAccess`), silently dropping the member.
     const ruby = toRuby(
       ['class C {', '  static readonly BLOCK_ALL = new C();', '}', 'const x = C.BLOCK_ALL;'].join('\n'),
     );
-    assert.ok(ruby.includes('C.BLOCK_ALL'));
-    // dot access, not the enum-style `::`
-    assert.ok(!ruby.includes('C::BLOCK_ALL'));
+    // Read as a constant, like an enum member: a snippet's own class declares
+    // one outright, and a library type resolves it through
+    // Jsii::StaticConstants.
+    assert.ok(ruby.includes('C::BLOCK_ALL'), `member not read as a constant:\n${ruby}`);
+    assert.ok(!ruby.includes('C.BLOCK_ALL'), `member still read as a method:\n${ruby}`);
   });
 });
 

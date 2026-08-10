@@ -67,6 +67,21 @@ describe 'generated RBS signatures' do
     it 'maps jsii Date to DateTime (which is why the date library is required)' do
       expect(sig).to match(/: DateTime/)
     end
+
+    it 'declares a static readonly member as a constant as well as a method' do
+      # `Statics::FOO` resolves at runtime (Jsii::StaticConstants), so a type
+      # checker that only knew the singleton method would reject working code.
+      statics = sig[/^class JsiiCalc::Statics\b.*?^end$/m]
+      expect(statics).not_to be_nil, 'no Statics class in the emitted sig'
+      expect(statics).to match(/^\s*FOO: String$/)
+      expect(statics).to match(/^\s*def self\.FOO: \(\) -> String$/)
+    end
+
+    it 'does not declare a mutable static as a constant' do
+      # `nonConstStatic` can be reassigned, so it stays a method pair.
+      statics = sig[/^class JsiiCalc::Statics\b.*?^end$/m]
+      expect(statics).not_to match(/^\s*NON_CONST_STATIC:/)
+    end
   end
 
   it 'fail validation when a signature is malformed (negative control)' do

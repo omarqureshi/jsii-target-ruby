@@ -39,17 +39,24 @@ describe('static readonly fields', () => {
     const ruby = toRuby(
       ['class C {', '  static readonly myValue = 5;', '}', 'const x = C.myValue;'].join('\n'),
     );
-    // Reads render as a class-method call with constant casing
-    // (`C.MY_VALUE`), matching what pacmak generates for real jsii statics —
-    // so the declaration has to define that method. It previously emitted a
-    // bare `MyValue = 5` constant, which no read ever referenced.
-    const read = /\bC\.([A-Za-z_][A-Za-z0-9_]*)/.exec(ruby)?.[1];
+    // A static readonly reads as a constant in both spellings: the snippet's
+    // own class declares a real Ruby constant, and a library type reaches one
+    // through Jsii::StaticConstants. Either way the read is `C::MY_VALUE`, so
+    // the declaration has to define that constant — a mismatch leaves every
+    // read referencing something that was never defined.
+    const read = /\bC::([A-Z][A-Za-z0-9_]*)/.exec(ruby)?.[1];
     assert.ok(read, `no static read found in:\n${ruby}`);
     assert.match(
       ruby,
-      new RegExp(`def self\\.${read}\\b`),
-      `read C.${read} has no matching declaration in:\n${ruby}`,
+      new RegExp(`^\\s*${read} = `, 'm'),
+      `read C::${read} has no matching declaration in:\n${ruby}`,
     );
+    assert.ok(isParseableRuby(ruby), `emitted Ruby does not parse:\n${ruby}`);
+  });
+
+  test('a mutable static stays a method, since a constant cannot be reassigned', () => {
+    const ruby = toRuby(['class C {', '  static mutable = 5;', '}'].join('\n'));
+    assert.match(ruby, /def self\.mutable/);
     assert.ok(isParseableRuby(ruby), `emitted Ruby does not parse:\n${ruby}`);
   });
 });
@@ -205,17 +212,13 @@ describe('import aliases qualify type references', () => {
     assert.ok(!/AWSCDK::IAM/.test(ruby), `qualified a method call:\n${ruby}`);
   });
 
-  test('a static readonly member is a method call, not a constant', () => {
-    // `def self.NODEJS_LATEST` is a method: `Runtime::NODEJS_LATEST` raises
-    // NameError. Enum members are the opposite — real constants needing `::`.
-    // In a snippet that does not typecheck both look identical (SCREAMING
-    // SNAKE after a PascalCase name), so the assembly has to be consulted.
+  test('a static readonly member reads as a constant, like an enum member', () => {
+    // A static readonly member and an enum member are indistinguishable in a
+    // snippet that does not typecheck (SCREAMING_SNAKE after a PascalCase
+    // name) — and no longer need distinguishing: both are read with `::`,
+    // the static resolving through Jsii::StaticConstants.
     const ruby = toRuby("new lambda.Function(this, 'F', { runtime: lambda.Runtime.NODEJS_LATEST });");
-    assert.match(ruby, /AWSCDK::Lambda::Runtime\.NODEJS_LATEST/);
-    assert.ok(
-      !/Runtime::NODEJS_LATEST/.test(ruby),
-      `static readonly rendered as a constant:\n${ruby}`,
-    );
+    assert.match(ruby, /AWSCDK::Lambda::Runtime::NODEJS_LATEST/);
   });
 
   test('an enum member is still a constant', () => {

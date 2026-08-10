@@ -327,6 +327,13 @@ function emitRbsClass(host: RbsHost, typeSpec: reflect.ClassType, lines: string[
       if (!p.immutable) {
         lines.push(`  def self.${name}=: (${t}) -> ${t}`);
       }
+      if (p.const) {
+        // A const static is also readable as `Type::NAME`, resolved at runtime
+        // by Jsii::StaticConstants. Declare the constant too, or a type checker
+        // rejects the spelling the translated examples use. Mutable statics get
+        // no constant: their value can change, so `::` would lie.
+        lines.push(`  ${name}: ${t}`);
+      }
       continue;
     }
     lines.push(...attrSignatures(host, p));

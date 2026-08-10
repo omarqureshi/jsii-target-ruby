@@ -112,10 +112,10 @@ export class RubyGenerator extends Generator {
     // RubyTarget's constructor; the merge is idempotent and this covers
     // direct Generator use (tests, tooling).
     applyRubyTargetOverlay(assembly.spec);
-    // Lets example translation tell an enum from a class: a static readonly
-    // member is a class method, so rendering it as a constant raises
-    // NameError. Registered after the overlay so the indexed Ruby paths match
-    // what is generated.
+    // Lets example translation resolve a reference by the name of the type it
+    // reaches, for the many CDK aliases that name no submodule (`firehose` is
+    // `aws_kinesisfirehose`). Registered after the overlay so the indexed Ruby
+    // paths match what is generated.
     registerAssemblyTypes(assembly.spec);
     for (const dep of Object.values(assembly.spec.dependencyClosure ?? {})) {
       registerAssemblyTypes(dep as any);

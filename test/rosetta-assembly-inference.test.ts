@@ -111,13 +111,12 @@ describe('references whose alias names no submodule', () => {
     assert.ok(!/RDS::EngineVersion/.test(ruby), `resolved to the wrong submodule:\n${ruby}`);
   });
 
-  test('an inferred module still separates a class method from its owner', () => {
-    // The whole point of resolving the module: `EngineVersion` is a class with
-    // static readonly members, generated as `def self.OPENSEARCH_1_0`, so
-    // `EngineVersion::OPENSEARCH_1_0` raises NameError.
+  test('an inferred module qualifies the member as well as its owner', () => {
+    // `EngineVersion` is a class with static readonly members; those read as
+    // constants (Jsii::StaticConstants), the same as an enum member, so the
+    // only thing the module resolution has to get right is the prefix.
     const ruby = toRuby('const v = opensearch.EngineVersion.OPENSEARCH_1_0;');
-    assert.match(ruby, /EngineVersion\.OPENSEARCH_1_0/);
-    assert.ok(!/EngineVersion::OPENSEARCH_1_0/.test(ruby), `rendered as a constant:\n${ruby}`);
+    assert.match(ruby, /AWSCDK::OpenSearchService::EngineVersion::OPENSEARCH_1_0/);
   });
 
   test('an enum reached through an inferred module keeps its constant', () => {
@@ -142,7 +141,7 @@ describe('references whose alias names no submodule', () => {
         'const version = EngineVersion.OPENSEARCH_1_3;',
       ].join('\n'),
     );
-    assert.match(ruby, /AWSCDK::OpenSearchService::EngineVersion\.OPENSEARCH_1_3/);
+    assert.match(ruby, /AWSCDK::OpenSearchService::EngineVersion::OPENSEARCH_1_3/);
   });
 
   test('imports do not narrow when more than one of them declares the name', () => {

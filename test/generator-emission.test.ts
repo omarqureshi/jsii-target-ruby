@@ -186,6 +186,67 @@ describe('rosetta example translation', () => {
 });
 
 
+// Static readonly members are generated as class methods, because their value
+// comes from the kernel and a Ruby constant is evaluated when the class body
+// runs. `Type::NAME` — how Ruby spells a constant read, and how the member is
+// spelled in every other jsii language — has to work anyway.
+//
+// Driven over a verbatim slice of the published aws-cdk-lib assembly rather
+// than a hand-built shape, because the member this has to work for is a real
+// one: aws_s3.BlockPublicAccess.BLOCK_ALL.
+describe('generator emission: static members as constants', () => {
+  const S3 = path.resolve(
+    __dirname,
+    '..',
+    '..',
+    'test',
+    'fixtures',
+    's3-block-public-access.jsii.json',
+  );
+
+  let source: string;
+
+  before(async () => {
+    source = await generateFixture(path.join('s3', 'block_public_access.rb'), 'verbatim', S3);
+  });
+
+  test('emits the static readonly members as class methods', () => {
+    assert.match(source, /def self\.BLOCK_ALL/);
+    assert.match(source, /def self\.BLOCK_ACLS/);
+  });
+
+  test('the emitted class reaches BLOCK_ALL through the constant form', () => {
+    // Executed, not pattern-matched: the constant form is a runtime behaviour
+    // of Jsii::Object, so only running the generated class proves it.
+    const { spawnSync } = require('node:child_process');
+    const runtimeLib = path.resolve(__dirname, '..', '..', 'runtime', 'lib');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ruby-static-const-'));
+    const sourceFile = path.join(dir, 'block_public_access.rb');
+    fs.writeFileSync(sourceFile, source);
+    const program = [
+      "require 'jsii'",
+      // Stand in for the kernel: the round-trip itself is covered by the
+      // runtime specs, what matters here is that the constant reaches it.
+      'module Jsii',
+      '  class Kernel',
+      '    def self.instance = new',
+      '    def get_static(fqn, name) = "#{fqn}##{name}"',
+      '  end',
+      'end',
+      // The gem entry point defines the module namespace; this loads one file.
+      'module AWSCDK; module S3; end; end',
+      `load ${JSON.stringify(sourceFile)}`,
+      'puts AWSCDK::S3::BlockPublicAccess::BLOCK_ALL',
+      'puts AWSCDK::S3::BlockPublicAccess.BLOCK_ALL',
+    ].join('\n');
+    const res = spawnSync('ruby', ['-I', runtimeLib, '-e', program], { encoding: 'utf-8' });
+    assert.equal(res.status, 0, `ruby failed:\n${res.stderr}`);
+    const [viaConstant, viaMethod] = res.stdout.trim().split('\n');
+    assert.equal(viaConstant, 'aws-cdk-lib.aws_s3.BlockPublicAccess#BLOCK_ALL');
+    assert.equal(viaConstant, viaMethod, 'the two spellings disagree');
+  });
+});
+
 // The four member-doc emission sites (instance/static x property/method) each
 // built the same `@param`/`@return` block by hand. These pin what each one
 // renders, so unifying them cannot quietly drop a tag from one position.

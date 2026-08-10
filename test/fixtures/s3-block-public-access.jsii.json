@@ -1,0 +1,188 @@
+{
+  "name": "aws-cdk-lib",
+  "version": "2.263.0",
+  "schema": "jsii/0.10.0",
+  "jsiiVersion": "0.0.0-dev",
+  "license": "Apache-2.0",
+  "fingerprint": "PHONY",
+  "author": {
+    "name": "Amazon Web Services",
+    "roles": [
+      "author"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aws/aws-cdk.git"
+  },
+  "homepage": "https://github.com/aws/aws-cdk",
+  "description": "A real slice of aws-cdk-lib: aws_s3.BlockPublicAccess and its static readonly members, copied verbatim from the published assembly.",
+  "targets": {
+    "ruby": {
+      "gem": "aws-cdk-lib",
+      "module": "AWSCDK",
+      "acronyms": [
+        "S3",
+        "ACL",
+        "ACLS"
+      ]
+    }
+  },
+  "submodules": {
+    "aws-cdk-lib.aws_s3": {
+      "targets": {
+        "ruby": {
+          "module": "AWSCDK::S3"
+        }
+      }
+    }
+  },
+  "types": {
+    "aws-cdk-lib.aws_s3.BlockPublicAccess": {
+      "assembly": "aws-cdk-lib",
+      "docs": {
+        "stability": "stable",
+        "example": "import { RemovalPolicy } from 'aws-cdk-lib';\n\nnew s3.Bucket(scope, 'Bucket', {\n  blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,\n  encryption: s3.BucketEncryption.S3_MANAGED,\n  enforceSSL: true,\n  versioned: true,\n  removalPolicy: RemovalPolicy.RETAIN,\n});",
+        "custom": {
+          "exampleMetadata": "infused"
+        }
+      },
+      "fqn": "aws-cdk-lib.aws_s3.BlockPublicAccess",
+      "initializer": {
+        "docs": {
+          "stability": "stable"
+        },
+        "locationInModule": {
+          "filename": "aws-s3/lib/bucket.ts",
+          "line": 1199
+        },
+        "parameters": [
+          {
+            "name": "options",
+            "type": {
+              "fqn": "aws-cdk-lib.aws_s3.BlockPublicAccessOptions"
+            }
+          }
+        ]
+      },
+      "kind": "class",
+      "locationInModule": {
+        "filename": "aws-s3/lib/bucket.ts",
+        "line": 1163
+      },
+      "name": "BlockPublicAccess",
+      "namespace": "aws_s3",
+      "properties": [
+        {
+          "const": true,
+          "docs": {
+            "deprecated": "Use `BLOCK_ACLS_ONLY` instead.",
+            "stability": "deprecated"
+          },
+          "immutable": true,
+          "locationInModule": {
+            "filename": "aws-s3/lib/bucket.ts",
+            "line": 1179
+          },
+          "name": "BLOCK_ACLS",
+          "static": true,
+          "type": {
+            "fqn": "aws-cdk-lib.aws_s3.BlockPublicAccess"
+          }
+        },
+        {
+          "const": true,
+          "docs": {
+            "stability": "stable",
+            "summary": "Use this option if you want to only block the ACLs, using this will set blockPublicPolicy and restrictPublicBuckets to false."
+          },
+          "immutable": true,
+          "locationInModule": {
+            "filename": "aws-s3/lib/bucket.ts",
+            "line": 1187
+          },
+          "name": "BLOCK_ACLS_ONLY",
+          "static": true,
+          "type": {
+            "fqn": "aws-cdk-lib.aws_s3.BlockPublicAccess"
+          }
+        },
+        {
+          "const": true,
+          "docs": {
+            "remarks": "However keep in mind that this is the default state of an S3 bucket, and leaving blockPublicAccess undefined would also work.",
+            "stability": "stable",
+            "summary": "Use this option if you want to ensure every public access method is blocked."
+          },
+          "immutable": true,
+          "locationInModule": {
+            "filename": "aws-s3/lib/bucket.ts",
+            "line": 1168
+          },
+          "name": "BLOCK_ALL",
+          "static": true,
+          "type": {
+            "fqn": "aws-cdk-lib.aws_s3.BlockPublicAccess"
+          }
+        },
+        {
+          "docs": {
+            "stability": "stable"
+          },
+          "locationInModule": {
+            "filename": "aws-s3/lib/bucket.ts",
+            "line": 1194
+          },
+          "name": "blockPublicAcls",
+          "optional": true,
+          "type": {
+            "primitive": "boolean"
+          }
+        },
+        {
+          "docs": {
+            "stability": "stable"
+          },
+          "locationInModule": {
+            "filename": "aws-s3/lib/bucket.ts",
+            "line": 1195
+          },
+          "name": "blockPublicPolicy",
+          "optional": true,
+          "type": {
+            "primitive": "boolean"
+          }
+        },
+        {
+          "docs": {
+            "stability": "stable"
+          },
+          "locationInModule": {
+            "filename": "aws-s3/lib/bucket.ts",
+            "line": 1196
+          },
+          "name": "ignorePublicAcls",
+          "optional": true,
+          "type": {
+            "primitive": "boolean"
+          }
+        },
+        {
+          "docs": {
+            "stability": "stable"
+          },
+          "locationInModule": {
+            "filename": "aws-s3/lib/bucket.ts",
+            "line": 1197
+          },
+          "name": "restrictPublicBuckets",
+          "optional": true,
+          "type": {
+            "primitive": "boolean"
+          }
+        }
+      ],
+      "symbolId": "aws-s3/lib/bucket:BlockPublicAccess"
+    }
+  }
+}

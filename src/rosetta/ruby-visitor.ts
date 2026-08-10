@@ -3,7 +3,7 @@ import * as ts from 'typescript';
 import { rubyGemName } from '../gemspec';
 import { resolveRubyModulePath, rubyConstName, rubyModuleName, rubyName, toPascalCase } from '../helpers';
 import { loadRubyTargetOverlay, rubyModuleForImportAlias } from '../target-config';
-import { rubyPathForTypeName, rubyTypeKind } from '../type-oracle';
+import { rubyPathForTypeName } from '../type-oracle';
 import { DefaultVisitor } from 'jsii-rosetta/lib/languages/default';
 import { TargetLanguage } from 'jsii-rosetta/lib/languages/target-language';
 import { analyzeObjectLiteral, ObjectLiteralStruct } from 'jsii-rosetta/lib/jsii/jsii-types';
@@ -579,13 +579,12 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     }
 
     // Static readonly (const) property access — the "enum-like class" pattern
-    // (`BlockPublicAccess.BLOCK_ALL`, `Runtime.RUBY_4_0`). Unlike enum members
-    // (`::`), pacmak exposes these as class methods accessed with `.`, and the
-    // member keeps its constant casing (matching pacmak's `rubyConstName`).
-    // Without this, the access falls into the type-reference branch below and the
-    // member is dropped, leaving just `AWSCDK::S3::BlockPublicAccess`.
+    // (`BlockPublicAccess.BLOCK_ALL`, `Runtime.RUBY_4_0`). Read as a constant,
+    // exactly like an enum member: Jsii::StaticConstants resolves `Type::NAME`
+    // to the generated class method. Without this the access would fall into
+    // the type-reference branch below and the member would be dropped.
     if (isStaticReadonlyAccess(context.typeChecker, node)) {
-      return new OTree([context.convert(node.expression), '.', rubyConstName(node.name.text)]);
+      return new OTree([context.convert(node.expression), '::', rubyConstName(node.name.text)]);
     }
 
     const nameText = node.name.text;
@@ -610,15 +609,10 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
         exprNode = new OTree([rubyModuleName(context.textOf(node.expression))]);
       }
 
-      // A SCREAMING_SNAKE member is never a type: it is either an enum
-      // member (a real constant, `::`) or a static readonly property, which
-      // the generator emits as `def self.NAME` — reaching that with `::`
-      // raises NameError. Only the assembly can tell the two apart, and when
-      // it says nothing we keep `::`.
+      // A SCREAMING_SNAKE member is never a type: it is an enum member or a
+      // static readonly property, and both are read as constants — the static
+      // through Jsii::StaticConstants. They no longer need telling apart.
       if (/^[A-Z][A-Z0-9_]*$/.test(nameText)) {
-        if (ownerPath && rubyTypeKind(ownerPath) === 'other') {
-          return new OTree([exprNode, '.', rubyConstName(nameText)]);
-        }
         return new OTree([exprNode, '::', rubyConstName(nameText)]);
       }
 
@@ -1122,15 +1116,17 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     // preserving its initializer, rather than an instance attribute macro. Ruby constants must
     // begin with an uppercase letter.
     if (isStatic) {
-      // Reads of a static render as a class-method call — `C.MY_VALUE` for
-      // `static readonly` (constant casing, matching what pacmak generates
-      // for real jsii statics) and `C.foo` otherwise — so the declaration has
-      // to define exactly that method. Emitting a bare constant here left
-      // every read referencing something that was never defined.
+      // A `static readonly` is a constant in both senses, so declare a real
+      // Ruby constant — that is what reads of it render as (`C::MY_VALUE`),
+      // matching how a library type's static is reached through
+      // Jsii::StaticConstants. A *mutable* static stays a class method: a
+      // constant cannot be reassigned.
       const rawName = node.name.getText();
-      const methodName = isReadonly ? rubyConstName(rawName) : toSnakeCase(rawName);
       const value = node.initializer ? context.convert(node.initializer) : new OTree(['nil']);
-      return new OTree([`def self.${methodName} = `, value], [], { canBreakLine: true });
+      if (isReadonly) {
+        return new OTree([`${rubyConstName(rawName)} = `, value], [], { canBreakLine: true });
+      }
+      return new OTree([`def self.${toSnakeCase(rawName)} = `, value], [], { canBreakLine: true });
     }
 
     const attrMethod = isReadonly ? 'attr_reader' : 'attr_accessor';
