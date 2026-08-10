@@ -3,7 +3,7 @@ import * as ts from 'typescript';
 import { rubyGemName } from '../gemspec';
 import { resolveRubyModulePath, rubyConstName, rubyModuleName, rubyName, toPascalCase } from '../helpers';
 import { loadRubyTargetOverlay, rubyModuleForImportAlias } from '../target-config';
-import { rubyTypeKind } from '../type-oracle';
+import { rubyPathForTypeName, rubyTypeKind } from '../type-oracle';
 import { DefaultVisitor } from 'jsii-rosetta/lib/languages/default';
 import { TargetLanguage } from 'jsii-rosetta/lib/languages/target-language';
 import { analyzeObjectLiteral, ObjectLiteralStruct } from 'jsii-rosetta/lib/jsii/jsii-types';
@@ -184,6 +184,27 @@ export function findRubyName(jsiiSymbol: JsiiSymbol): string | undefined {
 }
 
 /**
+ * Every name the snippet binds for itself: declared types, and variables (a
+ * `const s3 = ...` shadows the alias the same way a `class Duration` shadows
+ * the library type).
+ */
+function collectBoundNames(node: ts.Node, into: Set<string>): void {
+  ts.forEachChild(node, (child) => {
+    const declares =
+      ts.isClassDeclaration(child) ||
+      ts.isInterfaceDeclaration(child) ||
+      ts.isEnumDeclaration(child) ||
+      ts.isTypeAliasDeclaration(child) ||
+      ts.isFunctionDeclaration(child) ||
+      ts.isVariableDeclaration(child);
+    if (declares && child.name && ts.isIdentifier(child.name)) {
+      into.add(child.name.text);
+    }
+    collectBoundNames(child, into);
+  });
+}
+
+/**
  * Maps common JavaScript/TypeScript builtin functions to their native Ruby equivalents.
  */
 const BUILTIN_FUNCTIONS: { [key: string]: string } = {
@@ -243,6 +264,18 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
    */
   private readonly importedTypeModules = new Map<string, { fqn: string; name: string }>();
 
+  /**
+   * Names the snippet itself binds — its own classes, interfaces, enums and
+   * variables.
+   *
+   * Resolving a name against the assembly must never win over a declaration in
+   * the snippet: a snippet that defines `class Duration` means that one, and
+   * rewriting the reference to `AWSCDK::Duration` would point it at a different
+   * class than the one two lines above it. Collected up front rather than as
+   * declarations are rendered, since a name may be used before it is declared.
+   */
+  private readonly locallyBound = new Set<string>();
+
   public constructor() {
     super();
   }
@@ -255,6 +288,8 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     this.emittedRequires.clear();
     this.importedModuleFqns.clear();
     this.importedTypeModules.clear();
+    this.locallyBound.clear();
+    collectBoundNames(node, this.locallyBound);
     return super.sourceFile(node, context);
   }
 
@@ -315,22 +350,55 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
    */
   private rubyTypeReference(text: string): string {
     const imported = this.importedTypeModules.get(text);
-    return imported
-      ? `${guessRubyModuleName(imported.fqn)}::${rubyModuleName(imported.name)}`
-      : rubyModuleName(text);
+    if (imported) {
+      return `${guessRubyModuleName(imported.fqn)}::${rubyModuleName(imported.name)}`;
+    }
+    return this.rubyPathOfType(text) ?? rubyModuleName(text);
   }
 
   /**
    * The Ruby path an expression like `lambda.Runtime` names, or undefined if
-   * its head is not a module we can resolve.
+   * we cannot resolve it.
    */
   private rubyPathOfExpression(text: string): string | undefined {
-    const [head, ...rest] = text.split('.');
-    const module = this.rubyModuleForAlias(head);
-    if (!module) {
+    const segments = text.split('.');
+    // Only a chain of plain names can be a constant path; `foo().Bar` and the
+    // like must not be taken apart as if the head were a module alias.
+    if (!segments.every((s) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(s))) {
       return undefined;
     }
-    return [module, ...rest.map((part) => this.rubyTypeNameIn(module, part))].join('::');
+
+    const [head, ...rest] = segments;
+    const module = this.rubyModuleForAlias(head);
+    if (module) {
+      return [module, ...rest.map((part) => this.rubyTypeNameIn(module, part))].join('::');
+    }
+
+    // The alias names no submodule we can recognise — most CDK aliases do not
+    // (`firehose` is `aws_kinesisfirehose`). Ask the assembly where the type
+    // being reached through it is declared instead.
+    const resolved = this.rubyPathOfType(rest[0] ?? head, rest.length > 0 ? head : undefined);
+    if (!resolved) {
+      return undefined;
+    }
+    const owningModule = resolved.split('::').slice(0, -1).join('::');
+    return [resolved, ...rest.slice(1).map((part) => this.rubyTypeNameIn(owningModule, part))].join('::');
+  }
+
+  /**
+   * The Ruby path the assembly gives a bare TypeScript type name, if it names
+   * a type unambiguously and the snippet has not bound that name itself.
+   */
+  private rubyPathOfType(name: string, aliasHint?: string): string | undefined {
+    if (this.locallyBound.has(name) || (aliasHint && this.locallyBound.has(aliasHint))) {
+      return undefined;
+    }
+    // A type reference is PascalCase; SCREAMING_SNAKE is a member, and
+    // lowercase is a value.
+    if (!/^[A-Z]/.test(name) || /^[A-Z0-9_]+$/.test(name)) {
+      return undefined;
+    }
+    return rubyPathForTypeName(name, aliasHint);
   }
 
   /**
@@ -514,11 +582,17 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
       if (named) return named;
 
       let exprNode = context.updateContext({ inTypeExpression: inTypeExpr }).convert(node.expression);
-      if (inTypeExpr && ts.isIdentifier(node.expression)) {
-        // An import alias resolves to its assembly's module path (overlay
-        // aware); anything else can only be PascalCased as-is.
-        const text = context.textOf(node.expression);
-        exprNode = new OTree([this.rubyModuleForAlias(text) ?? rubyModuleName(text)]);
+      // The owner as a Ruby constant path: an import alias resolves to its
+      // assembly's module path (overlay aware), and failing that the assembly
+      // is asked where the type it reaches is declared.
+      const ownerPath = inTypeExpr
+        ? this.rubyPathOfExpression(context.textOf(node.expression))
+        : undefined;
+      if (ownerPath) {
+        exprNode = new OTree([ownerPath]);
+      } else if (inTypeExpr && ts.isIdentifier(node.expression)) {
+        // Nothing known about it; it can only be PascalCased as-is.
+        exprNode = new OTree([rubyModuleName(context.textOf(node.expression))]);
       }
 
       // A SCREAMING_SNAKE member is never a type: it is either an enum
@@ -527,11 +601,17 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
       // raises NameError. Only the assembly can tell the two apart, and when
       // it says nothing we keep `::`.
       if (/^[A-Z][A-Z0-9_]*$/.test(nameText)) {
-        const ownerPath = this.rubyPathOfExpression(context.textOf(node.expression));
         if (ownerPath && rubyTypeKind(ownerPath) === 'other') {
           return new OTree([exprNode, '.', rubyConstName(nameText)]);
         }
         return new OTree([exprNode, '::', rubyConstName(nameText)]);
+      }
+
+      // The whole access may name a type: `firehose.DeliveryStream` resolves as
+      // one thing even though `firehose` alone resolves as nothing.
+      const typePath = inTypeExpr ? this.rubyPathOfExpression(context.textOf(node)) : undefined;
+      if (typePath) {
+        return new OTree([typePath]);
       }
 
       let nameNode = context.convert(node.name);
@@ -702,6 +782,14 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
 
     if (this.importedTypeModules.has(text)) {
       return new OTree([this.rubyTypeReference(text)]);
+    }
+
+    // A bare type name with neither alias nor import — the fixture carrying the
+    // import is not shipped in the package, so most published examples arrive
+    // this way. `DeliveryStream.new` names nothing in Ruby.
+    const inferred = this.rubyPathOfType(text);
+    if (inferred) {
+      return new OTree([inferred]);
     }
 
     return new OTree([text]);

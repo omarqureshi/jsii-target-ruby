@@ -23,6 +23,29 @@ export type RubyTypeKind = 'enum' | 'other';
 const KINDS = new Map<string, RubyTypeKind>();
 const LOADED_ASSEMBLIES = new Set<string>();
 
+/** Where a type declared by an assembly lives. */
+interface TypeLocation {
+  /** The full Ruby constant path the generator emits for it. */
+  readonly rubyPath: string;
+  /** Its jsii submodule, assembly name stripped (`aws_kinesisfirehose`). */
+  readonly submodule: string;
+  /** The assembly declaring it — what a root-level type is aliased by. */
+  readonly assembly: string;
+}
+
+/**
+ * TypeScript type name -> everywhere the assembly declares that name.
+ *
+ * The alias index in target-config resolves an import alias by making it look
+ * like a submodule name, which only reaches aliases that do (`iam` ->
+ * `aws_iam`). Many CDK aliases are unrelated to their submodule —
+ * `firehose` is `aws_kinesisfirehose`, `sfn` is `aws_stepfunctions` — and
+ * published examples carry no import statement to learn from. The type name,
+ * though, is in the assembly: whatever `firehose` means, `DeliveryStream` is
+ * declared in exactly one place.
+ */
+const BY_TYPE_NAME = new Map<string, TypeLocation[]>();
+
 /** The Ruby path a jsii fqn is generated as, overlay-aware. */
 function rubyPathFor(fqn: string): string {
   const packageName = fqn.split('.')[0];
@@ -46,9 +69,42 @@ export function registerAssemblyTypes(assembly: spec.Assembly): void {
   }
   LOADED_ASSEMBLIES.add(assembly.name);
 
+  const submoduleFqns = new Set(Object.keys(assembly.submodules ?? {}));
+
   for (const [fqn, type] of Object.entries(assembly.types ?? {})) {
-    KINDS.set(rubyPathFor(fqn), type.kind === spec.TypeKind.Enum ? 'enum' : 'other');
+    const rubyPath = rubyPathFor(fqn);
+    KINDS.set(rubyPath, type.kind === spec.TypeKind.Enum ? 'enum' : 'other');
+
+    const parts = fqn.split('.');
+    const name = parts[parts.length - 1];
+    const locations = BY_TYPE_NAME.get(name) ?? [];
+    locations.push({
+      rubyPath,
+      submodule: submoduleOf(parts, submoduleFqns),
+      assembly: assembly.name,
+    });
+    BY_TYPE_NAME.set(name, locations);
   }
+}
+
+/**
+ * The submodule part of a split fqn.
+ *
+ * A nested type's fqn (`asm.aws_s3.Bucket.Inner`) is indistinguishable from a
+ * deeper submodule by shape alone, so ask the assembly which prefixes are
+ * really submodules. When none of them matches, "everything between the
+ * assembly and the type name" is the best available guess — it is only ever
+ * compared against an import alias, so an over-long answer costs a match it
+ * would not otherwise have made, while calling it root-level would claim the
+ * type is reached through the assembly alias when it is not.
+ */
+function submoduleOf(parts: readonly string[], submoduleFqns: ReadonlySet<string>): string {
+  for (let end = parts.length - 1; end > 1; end--) {
+    if (submoduleFqns.has(parts.slice(0, end).join('.'))) {
+      return parts.slice(1, end).join('.');
+    }
+  }
+  return parts.slice(1, -1).join('.');
 }
 
 /**
@@ -116,9 +172,64 @@ export function rubyTypeKind(rubyPath: string): RubyTypeKind | undefined {
   return KINDS.get(rubyPath);
 }
 
+/**
+ * The Ruby constant path for a TypeScript type name, when the assemblies
+ * indexed here name exactly one type by it.
+ *
+ * `aliasHint` is the import alias the reference came through
+ * (`opensearch.EngineVersion`). It is only ever used to narrow: a name declared
+ * by several submodules resolves if the alias resembles exactly one of them,
+ * and otherwise resolves to nothing. Guessing between `aws_events.Schedule` and
+ * `aws_applicationautoscaling.Schedule` would put a plausible but wrong
+ * constant in the docs, which is worse than leaving the alias alone.
+ */
+export function rubyPathForTypeName(typeName: string, aliasHint?: string): string | undefined {
+  if (!environmentLoaded) {
+    environmentLoaded = true;
+    loadFromEnvironment();
+  }
+
+  const found = BY_TYPE_NAME.get(typeName);
+  if (found === undefined) {
+    return undefined;
+  }
+
+  return (
+    onlyPath(found) ??
+    (aliasHint ? onlyPath(found.filter((l) => resembles(l, aliasHint))) : undefined)
+  );
+}
+
+/** The one Ruby path these locations agree on, or undefined if they do not. */
+function onlyPath(locations: readonly TypeLocation[]): string | undefined {
+  const paths = new Set(locations.map((l) => l.rubyPath));
+  return paths.size === 1 ? locations[0].rubyPath : undefined;
+}
+
+/**
+ * Whether an import alias plausibly names where this type lives — its
+ * submodule, or for a root-level type the assembly itself (`cdk.Tags` is
+ * aws-cdk-lib's own `Tags`, not `assertions.Tags`).
+ *
+ * Substring rather than equality, because the conventional aliases are
+ * abbreviations of the name and not the other way round: `opensearch` of
+ * `aws_opensearchservice`, `s3deploy` of `aws_s3_deployment`, `agentcore` of
+ * `aws_bedrockagentcore`, `cdk` of `aws-cdk-lib`. Aliases that abbreviate by
+ * dropping letters (`sfn`, `apigwv2`) match nothing here — they are resolved by
+ * being the only declaration of their type name, or not at all.
+ */
+function resembles(location: TypeLocation, alias: string): boolean {
+  if (alias.length < 2) {
+    return false;
+  }
+  const owner = location.submodule === '' ? location.assembly : location.submodule;
+  return owner.replace(/^aws_/, '').replace(/[-._]/g, '').toLowerCase().includes(alias.toLowerCase());
+}
+
 /** Test hook: drop everything indexed so far. */
 export function resetTypeOracle(): void {
   KINDS.clear();
+  BY_TYPE_NAME.clear();
   LOADED_ASSEMBLIES.clear();
   environmentLoaded = false;
 }

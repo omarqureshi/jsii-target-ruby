@@ -30,7 +30,13 @@ export function registerRosettaLanguage(): void {
   }
   try {
     registry.registerTargetLanguage('ruby', {
-      version: '1',
+      // Bump whenever the visitor's output changes: rosetta keeps a cached
+      // translation for as long as its recorded translator version matches, so
+      // leaving this alone makes a rendering fix invisible in any rebuild that
+      // reuses a tablet. Same convention as the built-in visitors
+      // (`PythonVisitor.VERSION`).
+      //   2: references resolved through the assembly's own type names
+      version: '2',
       createVisitor: () => new RubyVisitor(),
     });
   } catch (e: any) {
