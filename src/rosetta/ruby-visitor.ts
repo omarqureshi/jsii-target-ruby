@@ -369,7 +369,10 @@ export class RubyVisitor extends DefaultVisitor<RubyLanguageContext> {
     }
 
     const [head, ...rest] = segments;
-    const module = this.rubyModuleForAlias(head);
+    // A name the snippet binds is that binding, whatever else it resembles: a
+    // `const storage = ...` shadows the module the profile calls `storage`,
+    // and reading its member as a constant path names something else entirely.
+    const module = this.locallyBound.has(head) ? undefined : this.rubyModuleForAlias(head);
     if (module) {
       return [module, ...rest.map((part) => this.rubyTypeNameIn(module, part))].join('::');
     }

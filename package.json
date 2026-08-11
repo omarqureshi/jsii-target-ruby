@@ -30,5 +30,9 @@
   "devDependencies": {
     "typescript": "~6.0.0"
   },
-  "//": "SPIKE NOTE: dependency ranges are placeholders and node_modules is symlinked into the sibling jsii monorepo checkout; the real package pins the published jsii-pacmak plugin API."
+  "//": "SPIKE NOTE: dependency ranges are placeholders and node_modules is symlinked into the sibling jsii monorepo checkout; the real package pins the published jsii-pacmak plugin API.",
+  "exports": {
+    ".": "./lib/index.js",
+    "./testing": "./lib/testing.js"
+  }
 }

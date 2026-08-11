@@ -91,10 +91,11 @@ describe('rubyModuleName', () => {
 });
 
 describe('guessRubyModuleName', () => {
-  // Unresolved references resolve against the target-config overlay — the
-  // same naming data generation uses. The CDK names below come from
-  // config/cdk-targets.json, not from code.
-  const OVERLAY = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+  // Unresolved references resolve against the profile — the same naming data
+  // generation uses. The names below come from a fabricated library's profile,
+  // not from code and not from any real vendor: what a particular library is
+  // called in Ruby is that library's question, asked where its profile lives.
+  const OVERLAY = path.resolve(__dirname, '..', '..', 'test', 'fixtures', 'profile.json');
   before(() => {
     process.env.JSII_RUBY_TARGET_CONFIG = OVERLAY;
   });
@@ -103,11 +104,12 @@ describe('guessRubyModuleName', () => {
   });
 
   const cases: Array<[string, string]> = [
-    ['aws-cdk-lib', 'AWSCDK'],
-    ['aws-cdk-lib.aws_s3', 'AWSCDK::S3'],
-    // The overlay knows the real casing — the old hardcoded guess said Ec2.
-    ['aws-cdk-lib.aws_ec2', 'AWSCDK::EC2'],
-    ['aws-cdk-lib.pipelines', 'AWSCDK::Pipelines'],
+    ['acme-lib', 'ACME'],
+    ['acme-lib.acme_storage', 'ACME::Storage'],
+    // The profile knows the real casing — a generic guess would say Db.
+    ['acme-lib.acme_db', 'ACME::DB'],
+    // A submodule with no vendor prefix at all.
+    ['acme-lib.pipelines', 'ACME::Pipelines'],
     // Assemblies without an overlay entry derive generically, with
     // submodules nested via `::`.
     ['jsii-calc', 'JsiiCalc'],
@@ -121,11 +123,11 @@ describe('guessRubyModuleName', () => {
 });
 
 describe('findRubyName', () => {
-  // The path taken when rosetta HAS assembly metadata for a symbol. The
-  // published aws-cdk-lib assembly carries no `targets.ruby` — that is exactly
-  // what the overlay supplies — so reading only the assembly's own targets
-  // drops the root module and emits examples that raise NameError when pasted.
-  const OVERLAY = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+  // The path taken when rosetta HAS assembly metadata for a symbol. Published
+  // assemblies generally carry no `targets.ruby` — that is exactly what the
+  // profile supplies — so reading only the assembly's own targets drops the
+  // root module and emits examples that raise NameError when pasted.
+  const OVERLAY = path.resolve(__dirname, '..', '..', 'test', 'fixtures', 'profile.json');
   before(() => {
     process.env.JSII_RUBY_TARGET_CONFIG = OVERLAY;
   });
@@ -149,23 +151,23 @@ describe('findRubyName', () => {
 
   test('qualifies a submodule type with the overlay root module', () => {
     assert.equal(
-      findRubyName(symbolFor('aws-cdk-lib.aws_s3.Bucket', ['aws-cdk-lib.aws_s3'])),
-      'AWSCDK::S3::Bucket',
+      findRubyName(symbolFor('acme-lib.acme_storage.Bucket', ['acme-lib.acme_storage'])),
+      'ACME::Storage::Bucket',
     );
   });
 
   test('uses the overlay acronym casing, not a generic derivation', () => {
     // Acronym restoration applies to the type name too: the generator emits
-    // `class AWSCDK::EC2::VPC`, so an example naming `Vpc` would reference a
-    // constant that does not exist.
+    // `class ACME::Identity::RoleID`, so an example naming `RoleId` would
+    // reference a constant that does not exist.
     assert.equal(
-      findRubyName(symbolFor('aws-cdk-lib.aws_ec2.Vpc', ['aws-cdk-lib.aws_ec2'])),
-      'AWSCDK::EC2::VPC',
+      findRubyName(symbolFor('acme-lib.acme_identity.RoleId', ['acme-lib.acme_identity'])),
+      'ACME::Identity::RoleID',
     );
   });
 
   test('qualifies a root type too', () => {
-    assert.equal(findRubyName(symbolFor('aws-cdk-lib.Stack')), 'AWSCDK::Stack');
+    assert.equal(findRubyName(symbolFor('acme-lib.Stack')), 'ACME::Stack');
   });
 
   test("uses the assembly's own ruby target when the overlay has no entry", () => {
