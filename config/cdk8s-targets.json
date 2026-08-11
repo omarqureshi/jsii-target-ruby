@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "Ruby naming for the cdk8s libraries, in the same shape as cdk-targets.json.",
+    "Separate file because cdk8s is an independent product with its own release",
+    "cadence: pointing JSII_RUBY_TARGET_CONFIG at this one generates cdk8s",
+    "bindings without dragging aws-cdk-lib's 20k types into the picture.",
+    "",
+    "cdk8s is a far smaller assembly than aws-cdk-lib (37 types, no submodules;",
+    "cdk8s-plus-27 adds 785), and its apps synthesize to YAML with no cloud",
+    "account involved — which makes it a cheap end-to-end check that this",
+    "target produces the same semantics as the TypeScript original."
+  ],
+  "constructs": {
+    "gem": "constructs",
+    "module": "Constructs"
+  },
+  "cdk8s": {
+    "_comment": [
+      "CDK8s, not Cdk8s: the name is an initialism with a digit in it, which no",
+      "casing rule is going to guess. Named explicitly so the module and every",
+      "reference to it agree."
+    ],
+    "gem": "cdk8s",
+    "module": "CDK8s",
+    "acronyms": ["API", "CDK8s", "JSON", "YAML", "URL", "ID"]
+  },
+  "cdk8s-plus-27": {
+    "_comment": [
+      "cdk8s-plus is versioned against a Kubernetes minor (27, 28, 29 ...), and",
+      "each is a separate assembly, so each gets its own gem and module rather",
+      "than one gem that silently changes what it binds to."
+    ],
+    "gem": "cdk8s-plus-27",
+    "module": "CDK8sPlus27",
+    "acronyms": ["API", "CDK8s", "JSON", "YAML", "URL", "ID", "TLS", "HTTP", "HTTPS", "CPU", "PVC", "DNS"]
+  }
+}
