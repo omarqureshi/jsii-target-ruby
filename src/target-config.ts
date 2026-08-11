@@ -27,6 +27,14 @@ export interface RubyTargetEntry {
   readonly gem?: string;
   readonly module?: string;
   readonly acronyms?: readonly string[];
+  /**
+   * A prefix this library puts on its submodule names, which its conventional
+   * import aliases leave off — `aws_` for aws-cdk-lib, whose `aws_iam` is
+   * aliased `iam`. Declared by the profile because it is a fact about the
+   * library, not about Ruby: a target that hardcodes one vendor's prefix
+   * resolves that vendor's aliases and silently fails everyone else's.
+   */
+  readonly submodulePrefix?: string;
   readonly submodules?: Record<string, { readonly module?: string }>;
 }
 
@@ -139,14 +147,21 @@ export function rubyModuleForImportAlias(alias: string): string | undefined {
   if (index === undefined) {
     index = new Map<string, string | null>();
     for (const entry of Object.values(overlay)) {
+      const prefix = entry?.submodulePrefix ?? '';
       for (const [fqn, submodule] of Object.entries(entry?.submodules ?? {})) {
         const module = submodule?.module;
         if (!module) continue;
 
         const leaf = fqn.split('.').pop() ?? '';
         // `aws-cdk-lib.aws_iam` is imported as `aws-cdk-lib/aws-iam` and
-        // conventionally aliased `iam`.
-        for (const candidate of new Set([leaf, leaf.replace(/^aws_/, '')])) {
+        // conventionally aliased `iam`; the prefix that makes those two the
+        // same word is the library's, so the profile states it.
+        const stripped = prefix && leaf.startsWith(prefix) ? leaf.slice(prefix.length) : leaf;
+        // A multi-word submodule is also reached by its last word alone
+        // (`aws_stepfunctions_tasks` as `tasks`), which is how the shorter
+        // conventional aliases are written.
+        const trailing = stripped.includes('_') ? stripped.slice(stripped.lastIndexOf('_') + 1) : '';
+        for (const candidate of new Set([leaf, stripped, trailing])) {
           if (!candidate) continue;
           // `null` marks an alias claimed by more than one module.
           index.set(candidate, index.has(candidate) && index.get(candidate) !== module ? null : module);

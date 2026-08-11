@@ -1,6 +1,8 @@
 {
   "_comment": "Ruby naming for the AWS CDK assembly closure \u2014 the JSII_RUBY_TARGET_CONFIG overlay consumed by src/target-config.ts. Upstream repos do not carry targets.ruby (external-language config never lands in an AWS repo), so the naming arrives at generation time via this file. Values are LOAD-BEARING: they become published gem and module names (permanent public API). Migrated from the fork-era publish pipeline's config (blog/.github/publish-config), which patched the same values into forked package.json files.",
   "aws-cdk-lib": {
+    "_submodulePrefix": "aws-cdk-lib names its submodules aws_<service>, while the conventional import alias leaves the prefix off (aws_iam -> iam). The target used to assume this prefix; it is a fact about this library, so it is declared here.",
+    "submodulePrefix": "aws_",
     "_decisions": {
       "acronyms": "acronym casing is case-restoring over PascalCase segmentation; submodule names are DERIVED from these plus the aws_-prefix drop (aws_s3 -> AWSCDK::S3), so a new acronym-named service landing upstream without an entry here renders PascalCase (aws_xyz -> Xyz) until added \u2014 scripts/check-cdk-naming.js flags new submodules per release.",
       "FSX": "deliberately FSX, not AWS's FSx branding: mixed-case tokens (like IPv4) are only used where explicitly declared; module aws-fsx renders FSX. Changing this later renames published constants \u2014 breaking.",

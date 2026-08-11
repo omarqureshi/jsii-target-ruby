@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "A synthetic naming profile, standing in for a real library's.",
+    "",
+    "The target must not know what AWS or Kubernetes is: it takes whatever",
+    "profile it is handed. Its own tests therefore run against a made-up",
+    "library, so they exercise the *mechanism* (alias resolution, acronym",
+    "casing, ambiguity) rather than any particular vendor's naming — and a",
+    "real library's naming is tested where that naming lives.",
+    "",
+    "Shapes deliberately covered, one per real-world case that bit us:",
+    "  acme_storage      alias `storage` resembles the submodule",
+    "  acme_identity     acronym casing (ID)",
+    "  acme_streamflow   alias `flow` resembles nothing (cf. firehose)",
+    "  acme_workflows_tasks  multi-word reached by a short alias",
+    "  acme_searchsvc / acme_db   same type name in two submodules",
+    "  pipelines         a submodule with no vendor prefix at all"
+  ],
+  "acme-lib": {
+    "gem": "acme-lib",
+    "module": "ACME",
+    "submodulePrefix": "acme_",
+    "acronyms": ["ID", "HTTP", "SQL"],
+    "submodules": {
+      "acme-lib.acme_storage": { "module": "ACME::Storage" },
+      "acme-lib.acme_identity": { "module": "ACME::Identity" },
+      "acme-lib.acme_streamflow": { "module": "ACME::StreamFlow" },
+      "acme-lib.acme_workflows": { "module": "ACME::Workflows" },
+      "acme-lib.acme_workflows_tasks": { "module": "ACME::WorkflowsTasks" },
+      "acme-lib.acme_searchsvc": { "module": "ACME::SearchSvc" },
+      "acme-lib.acme_db": { "module": "ACME::DB" },
+      "acme-lib.pipelines": { "module": "ACME::Pipelines" }
+    }
+  }
+}

@@ -198,7 +198,11 @@ function resembles(location: TypeLocation, alias: string): boolean {
     return false;
   }
   const owner = location.submodule === '' ? location.assembly : location.submodule;
-  return owner.replace(/^aws_/, '').replace(/[-._]/g, '').toLowerCase().includes(alias.toLowerCase());
+  // No prefix stripping here: the comparison is already a substring test, so a
+  // submodule's vendor prefix cannot stop its alias matching. (Stripping a
+  // hardcoded `aws_` did nothing a substring test was not already doing, and
+  // said something about one library inside a target that takes any profile.)
+  return owner.replace(/[-._]/g, '').toLowerCase().includes(alias.toLowerCase());
 }
 
 /** Test hook: drop everything indexed so far. */
