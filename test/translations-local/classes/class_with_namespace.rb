@@ -1,3 +1,3 @@
-require 'aws-cdk-lib'
-class MyClass < AWSCDK::Construct
+require 'acme-lib'
+class MyClass < ACME::Construct
 end

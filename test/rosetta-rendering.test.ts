@@ -106,23 +106,22 @@ describe('struct property reads', () => {
 });
 
 describe('import aliases qualify type references', () => {
-  // Most aws-cdk-lib examples are marked "generated from non-compiling
-  // source": rosetta cannot resolve their symbols, so type references fall
-  // back to rendering the local import alias. `s3.Bucket` became `S3::Bucket`,
-  // which raises NameError when pasted — the root module is not optional in
-  // Ruby. The alias is the only thing tying the reference to its assembly, so
-  // the import statement has to be remembered.
-  const OVERLAY = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+  // Most published examples are marked "generated from non-compiling source":
+  // rosetta cannot resolve their symbols, so type references fall back to
+  // rendering the local import alias. `storage.Bucket` became
+  // `Storage::Bucket`, which raises NameError when pasted — the root module is
+  // not optional in Ruby. The alias is the only thing tying the reference to
+  // its assembly, so the import statement has to be remembered.
+  const OVERLAY = path.resolve(__dirname, '..', '..', 'test', 'fixtures', 'profile.json');
 
   before(() => {
     process.env.JSII_RUBY_TARGET_CONFIG = OVERLAY;
-    // The enum-vs-static distinction can only come from the assembly. Two
-    // types are enough to show both answers.
     registerAssemblyTypes({
-      name: 'aws-cdk-lib',
+      name: 'acme-lib',
+      submodules: { 'acme-lib.acme_storage': {}, 'acme-lib.acme_identity': {} },
       types: {
-        'aws-cdk-lib.aws_lambda.Runtime': { kind: 'class' },
-        'aws-cdk-lib.aws_s3.BucketEncryption': { kind: 'enum' },
+        'acme-lib.acme_storage.BucketEncryption': { kind: 'enum' },
+        'acme-lib.acme_identity.RoleId': { kind: 'class' },
       },
     } as any);
   });
@@ -133,40 +132,40 @@ describe('import aliases qualify type references', () => {
 
   test('a submodule import qualifies with the root module', () => {
     const ruby = toRuby(
-      ["import * as s3 from 'aws-cdk-lib/aws-s3';", "new s3.Bucket(this, 'B');"].join('\n'),
+      ["import * as storage from 'acme-lib/acme-storage';", "new storage.Bucket(this, 'B');"].join('\n'),
     );
-    assert.match(ruby, /AWSCDK::S3::Bucket/);
+    assert.match(ruby, /ACME::Storage::Bucket/);
   });
 
   test('a root package import qualifies too', () => {
     const ruby = toRuby(
-      ["import * as cdk from 'aws-cdk-lib';", "new cdk.Stack(app, 'S');"].join('\n'),
+      ["import * as acme from 'acme-lib';", "new acme.Stack(app, 'S');"].join('\n'),
     );
-    assert.match(ruby, /AWSCDK::Stack/);
+    assert.match(ruby, /ACME::Stack/);
   });
 
   test('the overlay acronym casing is applied to the submodule', () => {
     const ruby = toRuby(
-      ["import * as ec2 from 'aws-cdk-lib/aws-ec2';", "new ec2.Vpc(this, 'V');"].join('\n'),
+      ["import * as identity from 'acme-lib/acme-identity';", "new identity.RoleId(this, 'R');"].join('\n'),
     );
-    assert.match(ruby, /AWSCDK::EC2::/);
+    assert.match(ruby, /ACME::Identity::/);
   });
 
   test('a selectively imported type is qualified', () => {
-    // `import { Bucket } from 'aws-cdk-lib/aws-s3'` binds the type name
+    // `import { Bucket } from 'acme-lib/acme-storage'` binds the type name
     // directly, so there is no alias in the reference at all — `Bucket.new`
     // names nothing in Ruby.
     const ruby = toRuby(
-      ["import { Bucket } from 'aws-cdk-lib/aws-s3';", "new Bucket(this, 'B');"].join('\n'),
+      ["import { Bucket } from 'acme-lib/acme-storage';", "new Bucket(this, 'B');"].join('\n'),
     );
-    assert.match(ruby, /AWSCDK::S3::Bucket/);
+    assert.match(ruby, /ACME::Storage::Bucket/);
   });
 
   test('a renamed selective import is qualified under its local name', () => {
     const ruby = toRuby(
-      ["import { Bucket as B } from 'aws-cdk-lib/aws-s3';", "new B(this, 'x');"].join('\n'),
+      ["import { Bucket as B } from 'acme-lib/acme-storage';", "new B(this, 'x');"].join('\n'),
     );
-    assert.match(ruby, /AWSCDK::S3::Bucket/);
+    assert.match(ruby, /ACME::Storage::Bucket/);
   });
 
   test('a selectively imported function is left alone', () => {
@@ -185,16 +184,16 @@ describe('import aliases qualify type references', () => {
     // alias still names a real submodule of the assembly being documented,
     // and `Iam::Role` is wrong twice over — no root module, and IAM is an
     // acronym the overlay knows about.
-    const ruby = toRuby("new iam.Role(this, 'R');");
-    assert.match(ruby, /AWSCDK::IAM::Role/);
+    const ruby = toRuby("new identity.Role(this, 'R');");
+    assert.match(ruby, /ACME::Identity::Role/);
   });
 
   test('the same inference covers the S3 fragment case', () => {
-    assert.match(toRuby("new s3.Bucket(this, 'B');"), /AWSCDK::S3::Bucket/);
+    assert.match(toRuby("new storage.Bucket(this, 'B');"), /ACME::Storage::Bucket/);
   });
 
   test('acronyms apply to the type name as well as the module', () => {
-    assert.match(toRuby("new ec2.Vpc(this, 'V');"), /AWSCDK::EC2::VPC/);
+    assert.match(toRuby("new identity.RoleId(this, 'R');"), /ACME::Identity::RoleID/);
   });
 
   test('an alias that names no known submodule is left alone', () => {
@@ -202,14 +201,14 @@ describe('import aliases qualify type references', () => {
     // declare.
     const ruby = toRuby("new widgets.Thing();");
     assert.match(ruby, /Widgets::Thing/);
-    assert.ok(!/AWSCDK::Widgets/.test(ruby), `invented a module:\n${ruby}`);
+    assert.ok(!/ACME::Widgets/.test(ruby), `invented a module:\n${ruby}`);
   });
 
   test('a lowercase member is a method call, not a type reference', () => {
-    // `iam.something()` is a call on a local variable; qualifying it would
+    // `identity.something()` is a call on a local variable; qualifying it would
     // turn a value into a constant path.
-    const ruby = toRuby('iam.someHelper();');
-    assert.ok(!/AWSCDK::IAM/.test(ruby), `qualified a method call:\n${ruby}`);
+    const ruby = toRuby('identity.someHelper();');
+    assert.ok(!/ACME::Identity/.test(ruby), `qualified a method call:\n${ruby}`);
   });
 
   test('a static readonly member reads as a constant, like an enum member', () => {
@@ -217,13 +216,13 @@ describe('import aliases qualify type references', () => {
     // snippet that does not typecheck (SCREAMING_SNAKE after a PascalCase
     // name) — and no longer need distinguishing: both are read with `::`,
     // the static resolving through Jsii::StaticConstants.
-    const ruby = toRuby("new lambda.Function(this, 'F', { runtime: lambda.Runtime.NODEJS_LATEST });");
-    assert.match(ruby, /AWSCDK::Lambda::Runtime::NODEJS_LATEST/);
+    const ruby = toRuby("new identity.Client(this, 'C', { role: identity.RoleId.ADMIN });");
+    assert.match(ruby, /ACME::Identity::RoleID::ADMIN/);
   });
 
   test('an enum member is still a constant', () => {
-    const ruby = toRuby("new s3.Bucket(this, 'B', { encryption: s3.BucketEncryption.S3_MANAGED });");
-    assert.match(ruby, /AWSCDK::S3::BucketEncryption::S3_MANAGED/);
+    const ruby = toRuby("new storage.Bucket(this, 'B', { encryption: storage.BucketEncryption.MANAGED });");
+    assert.match(ruby, /ACME::Storage::BucketEncryption::MANAGED/);
   });
 
   test('an unknown package still renders its alias, not a bogus prefix', () => {

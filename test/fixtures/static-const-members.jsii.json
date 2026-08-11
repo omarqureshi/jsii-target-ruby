@@ -1,5 +1,5 @@
 {
-  "name": "aws-cdk-lib",
+  "name": "acme-lib",
   "version": "2.263.0",
   "schema": "jsii/0.10.0",
   "jsiiVersion": "0.0.0-dev",
@@ -16,11 +16,11 @@
     "url": "https://github.com/aws/aws-cdk.git"
   },
   "homepage": "https://github.com/aws/aws-cdk",
-  "description": "A real slice of aws-cdk-lib: aws_s3.BlockPublicAccess and its static readonly members, copied verbatim from the published assembly.",
+  "description": "A class whose static readonly members are instances of itself, the shape a real library uses for enum-like constants. Fabricated: a real library proves this where its own profile lives.",
   "targets": {
     "ruby": {
-      "gem": "aws-cdk-lib",
-      "module": "AWSCDK",
+      "gem": "acme-lib",
+      "module": "ACME",
       "acronyms": [
         "S3",
         "ACL",
@@ -29,25 +29,25 @@
     }
   },
   "submodules": {
-    "aws-cdk-lib.aws_s3": {
+    "acme-lib.acme_storage": {
       "targets": {
         "ruby": {
-          "module": "AWSCDK::S3"
+          "module": "ACME::Storage"
         }
       }
     }
   },
   "types": {
-    "aws-cdk-lib.aws_s3.BlockPublicAccess": {
-      "assembly": "aws-cdk-lib",
+    "acme-lib.acme_storage.AccessLock": {
+      "assembly": "acme-lib",
       "docs": {
         "stability": "stable",
-        "example": "import { RemovalPolicy } from 'aws-cdk-lib';\n\nnew s3.Bucket(scope, 'Bucket', {\n  blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,\n  encryption: s3.BucketEncryption.S3_MANAGED,\n  enforceSSL: true,\n  versioned: true,\n  removalPolicy: RemovalPolicy.RETAIN,\n});",
+        "example": "import { RemovalPolicy } from 'acme-lib';\n\nnew s3.Bucket(scope, 'Bucket', {\n  blockPublicAccess: s3.AccessLock.BLOCK_ALL,\n  encryption: s3.BucketEncryption.S3_MANAGED,\n  enforceSSL: true,\n  versioned: true,\n  removalPolicy: RemovalPolicy.RETAIN,\n});",
         "custom": {
           "exampleMetadata": "infused"
         }
       },
-      "fqn": "aws-cdk-lib.aws_s3.BlockPublicAccess",
+      "fqn": "acme-lib.acme_storage.AccessLock",
       "initializer": {
         "docs": {
           "stability": "stable"
@@ -60,7 +60,7 @@
           {
             "name": "options",
             "type": {
-              "fqn": "aws-cdk-lib.aws_s3.BlockPublicAccessOptions"
+              "fqn": "acme-lib.acme_storage.AccessLockOptions"
             }
           }
         ]
@@ -70,8 +70,8 @@
         "filename": "aws-s3/lib/bucket.ts",
         "line": 1163
       },
-      "name": "BlockPublicAccess",
-      "namespace": "aws_s3",
+      "name": "AccessLock",
+      "namespace": "acme_storage",
       "properties": [
         {
           "const": true,
@@ -87,7 +87,7 @@
           "name": "BLOCK_ACLS",
           "static": true,
           "type": {
-            "fqn": "aws-cdk-lib.aws_s3.BlockPublicAccess"
+            "fqn": "acme-lib.acme_storage.AccessLock"
           }
         },
         {
@@ -104,7 +104,7 @@
           "name": "BLOCK_ACLS_ONLY",
           "static": true,
           "type": {
-            "fqn": "aws-cdk-lib.aws_s3.BlockPublicAccess"
+            "fqn": "acme-lib.acme_storage.AccessLock"
           }
         },
         {
@@ -122,7 +122,7 @@
           "name": "BLOCK_ALL",
           "static": true,
           "type": {
-            "fqn": "aws-cdk-lib.aws_s3.BlockPublicAccess"
+            "fqn": "acme-lib.acme_storage.AccessLock"
           }
         },
         {
@@ -182,7 +182,7 @@
           }
         }
       ],
-      "symbolId": "aws-s3/lib/bucket:BlockPublicAccess"
+      "symbolId": "aws-s3/lib/bucket:AccessLock"
     }
   }
 }

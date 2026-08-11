@@ -1,3 +1,3 @@
-import * as cdk from 'aws-cdk-lib';
-class MyClass extends cdk.Construct {
+import * as acme from 'acme-lib';
+class MyClass extends acme.Construct {
 }

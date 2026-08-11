@@ -191,23 +191,22 @@ describe('rosetta example translation', () => {
 // runs. `Type::NAME` — how Ruby spells a constant read, and how the member is
 // spelled in every other jsii language — has to work anyway.
 //
-// Driven over a verbatim slice of the published aws-cdk-lib assembly rather
-// than a hand-built shape, because the member this has to work for is a real
-// one: aws_s3.BlockPublicAccess.BLOCK_ALL.
+// Driven over a class whose static readonly members are instances of itself —
+// the shape real libraries use for enum-like constants, and the one that broke.
 describe('generator emission: static members as constants', () => {
-  const S3 = path.resolve(
+  const FIXTURE = path.resolve(
     __dirname,
     '..',
     '..',
     'test',
     'fixtures',
-    's3-block-public-access.jsii.json',
+    'static-const-members.jsii.json',
   );
 
   let source: string;
 
   before(async () => {
-    source = await generateFixture(path.join('s3', 'block_public_access.rb'), 'verbatim', S3);
+    source = await generateFixture(path.join('storage', 'access_lock.rb'), 'verbatim', FIXTURE);
   });
 
   test('emits the static readonly members as class methods', () => {
@@ -221,7 +220,7 @@ describe('generator emission: static members as constants', () => {
     const { spawnSync } = require('node:child_process');
     const runtimeLib = path.resolve(__dirname, '..', '..', 'runtime', 'lib');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ruby-static-const-'));
-    const sourceFile = path.join(dir, 'block_public_access.rb');
+    const sourceFile = path.join(dir, 'access_lock.rb');
     fs.writeFileSync(sourceFile, source);
     const program = [
       "require 'jsii'",
@@ -234,15 +233,15 @@ describe('generator emission: static members as constants', () => {
       '  end',
       'end',
       // The gem entry point defines the module namespace; this loads one file.
-      'module AWSCDK; module S3; end; end',
+      'module ACME; module Storage; end; end',
       `load ${JSON.stringify(sourceFile)}`,
-      'puts AWSCDK::S3::BlockPublicAccess::BLOCK_ALL',
-      'puts AWSCDK::S3::BlockPublicAccess.BLOCK_ALL',
+      'puts ACME::Storage::AccessLock::BLOCK_ALL',
+      'puts ACME::Storage::AccessLock.BLOCK_ALL',
     ].join('\n');
     const res = spawnSync('ruby', ['-I', runtimeLib, '-e', program], { encoding: 'utf-8' });
     assert.equal(res.status, 0, `ruby failed:\n${res.stderr}`);
     const [viaConstant, viaMethod] = res.stdout.trim().split('\n');
-    assert.equal(viaConstant, 'aws-cdk-lib.aws_s3.BlockPublicAccess#BLOCK_ALL');
+    assert.equal(viaConstant, 'acme-lib.acme_storage.AccessLock#BLOCK_ALL');
     assert.equal(viaConstant, viaMethod, 'the two spellings disagree');
   });
 });

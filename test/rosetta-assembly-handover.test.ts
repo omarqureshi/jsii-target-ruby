@@ -18,7 +18,7 @@ import { resetTypeOracle, rubyPathForTypeName } from '../src/type-oracle';
  * instead of an environment variable.
  */
 describe('assemblies handed over by rosetta', () => {
-  const OVERLAY = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+  const OVERLAY = path.resolve(__dirname, '..', '..', 'test', 'fixtures', 'profile.json');
   let assemblyDir: string;
 
   before(() => {
@@ -28,12 +28,12 @@ describe('assemblies handed over by rosetta', () => {
     fs.writeFileSync(
       path.join(assemblyDir, '.jsii'),
       JSON.stringify({
-        name: 'aws-cdk-lib',
-        version: '2.0.0',
+        name: 'acme-lib',
+        version: '1.0.0',
         schema: 'jsii/0.10.0',
-        submodules: { 'aws-cdk-lib.aws_kinesisfirehose': {} },
+        submodules: { 'acme-lib.acme_streamflow': {} },
         types: {
-          'aws-cdk-lib.aws_kinesisfirehose.DeliveryStream': { kind: 'class' },
+          'acme-lib.acme_streamflow.DeliveryStream': { kind: 'class' },
         },
       }),
     );
@@ -65,7 +65,7 @@ describe('assemblies handed over by rosetta', () => {
     // over — which is what a worker thread does before translating.
     assert.equal(rubyPathForTypeName('DeliveryStream'), undefined);
     registeredFactory().prepare({ assemblyLocations: [assemblyDir] });
-    assert.equal(rubyPathForTypeName('DeliveryStream'), 'AWSCDK::KinesisFirehose::DeliveryStream');
+    assert.equal(rubyPathForTypeName('DeliveryStream'), 'ACME::StreamFlow::DeliveryStream');
   });
 
   test('being told twice is harmless', () => {
@@ -73,7 +73,7 @@ describe('assemblies handed over by rosetta', () => {
     const factory = registeredFactory();
     factory.prepare({ assemblyLocations: [assemblyDir] });
     factory.prepare({ assemblyLocations: [assemblyDir] });
-    assert.equal(rubyPathForTypeName('DeliveryStream'), 'AWSCDK::KinesisFirehose::DeliveryStream');
+    assert.equal(rubyPathForTypeName('DeliveryStream'), 'ACME::StreamFlow::DeliveryStream');
   });
 
   test('an unreadable location does not fail the translation', () => {

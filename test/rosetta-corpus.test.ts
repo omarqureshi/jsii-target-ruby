@@ -17,13 +17,15 @@ import { RubyVisitor } from '../src/rosetta/ruby-visitor';
 // mirroring the corpus' relative layout under test/translations/.
 const EXPECTATIONS = path.resolve(__dirname, '..', '..', 'test', 'translations');
 
-// The visitor resolves unresolvable type references against the target-config
-// overlay (as the docs pipeline does in production) — run the corpus the same
-// way so namespaces in expectations match deployed behavior. Scoped with
+// The visitor resolves unresolvable type references against a naming profile
+// (as the docs pipeline does in production) — run the corpus the same way so
+// namespaces in expectations match deployed behaviour. The profile is a
+// fabricated one: the corpus is language-neutral and must not bake in any
+// particular library's naming. Scoped with
 // before/after like rosetta-names.test.ts, so nothing leaks in a
 // shared-process runner.
 before(() => {
-  process.env.JSII_RUBY_TARGET_CONFIG = path.resolve(__dirname, '..', '..', 'config', 'cdk-targets.json');
+  process.env.JSII_RUBY_TARGET_CONFIG = path.resolve(__dirname, '..', '..', 'test', 'fixtures', 'profile.json');
 });
 after(() => {
   delete process.env.JSII_RUBY_TARGET_CONFIG;
