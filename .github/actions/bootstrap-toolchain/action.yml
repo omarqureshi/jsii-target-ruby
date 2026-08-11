@@ -21,6 +21,13 @@ inputs:
   build-jsii-calc:
     description: also build the jsii-calc fixture chain (needed by the compliance suite)
     default: 'false'
+  plugin-path:
+    description: >
+      Where the jsii-target-ruby checkout is, relative to the workspace. Defaults
+      to the repository itself; a distribution repository (aws-cdk-ruby, cdk8s-ruby)
+      checks the plugin out alongside its own sources and points this at it, so the
+      toolchain wiring lives in one place rather than being copied per repository.
+    default: '.'
 
 runs:
   using: composite
@@ -73,27 +80,31 @@ runs:
 
     - name: Link plugin against the toolchain and build it
       shell: bash
+      working-directory: ${{ inputs.plugin-path }}
       run: |
         # link-toolchain also repoints the MONOREPO's jsii-rosetta at the
         # checkout: jsii-pacmak resolves rosetta from there, and the published
         # copy has no language registry — so without this the plugin registers
         # its visitor into a copy nobody reads and every example silently stays
         # TypeScript.
-        ./scripts/link-toolchain.sh toolchain/jsii toolchain/jsii-rosetta
+        # Paths are workspace-relative; from a nested plugin checkout the
+        # toolchain still sits at the workspace root.
+        root="$(cd "${GITHUB_WORKSPACE}" && pwd)"
+        ./scripts/link-toolchain.sh "$root/toolchain/jsii" "$root/toolchain/jsii-rosetta"
         npm run build
 
     - name: Verify pacmak and the plugin share one jsii-rosetta
       shell: bash
       run: |
         pacmak_rosetta="$(node -p "require.resolve('jsii-rosetta/package.json', { paths: ['toolchain/jsii/packages/jsii-pacmak'] })")"
-        plugin_rosetta="$(node -p "require.resolve('jsii-rosetta/package.json', { paths: ['.'] })")"
+        plugin_rosetta="$(node -p "require.resolve('jsii-rosetta/package.json', { paths: ['${{ inputs.plugin-path }}'] })")"
         if [ "$(realpath "$pacmak_rosetta")" != "$(realpath "$plugin_rosetta")" ]; then
           echo "::error::pacmak resolves $pacmak_rosetta but the plugin resolves $plugin_rosetta"
           echo "Example translation would silently emit TypeScript. See scripts/link-toolchain.sh."
           exit 1
         fi
         node -e "
-          const r = require.resolve('jsii-rosetta/lib/languages/index', { paths: ['.'] });
+          const r = require.resolve('jsii-rosetta/lib/languages/index', { paths: ['${{ inputs.plugin-path }}'] });
           if (typeof require(r).registerTargetLanguage !== 'function') {
             console.error('::error::resolved jsii-rosetta has no language registry');
             process.exit(1);
