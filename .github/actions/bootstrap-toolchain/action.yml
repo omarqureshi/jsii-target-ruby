@@ -21,6 +21,14 @@ inputs:
   build-jsii-calc:
     description: also build the jsii-calc fixture chain (needed by the compliance suite)
     default: 'false'
+  install-runtime:
+    description: >
+      Install @jsii/runtime and export JSII_RUNTIME, for steps that start a
+      kernel (running generated bindings, rather than only generating them).
+      The published runtime is used deliberately: a guest runtime is supposed
+      to work against a released kernel, so testing against the fork's would
+      prove less.
+    default: 'false'
   plugin-path:
     description: >
       Where the jsii-target-ruby checkout is, relative to the workspace. Defaults
@@ -77,6 +85,18 @@ runs:
       run: |
         yarn install
         npx projen compile
+
+    - name: Install @jsii/runtime for the kernel
+      if: inputs.install-runtime == 'true'
+      shell: bash
+      run: |
+        dir="${RUNNER_TEMP}/jsii-runtime"
+        mkdir -p "$dir"
+        ( cd "$dir" && npm init -y > /dev/null && npm install @jsii/runtime > /dev/null )
+        bin="$dir/node_modules/.bin/jsii-runtime"
+        [ -x "$bin" ] || { echo "::error::@jsii/runtime installed but $bin is not executable"; exit 1; }
+        echo "JSII_RUNTIME=$bin" >> "$GITHUB_ENV"
+        echo "kernel: $bin"
 
     - name: Link plugin against the toolchain and build it
       shell: bash
