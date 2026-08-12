@@ -1,0 +1,116 @@
+name: publish-runtime-docs
+
+# Builds the jsii-ruby-runtime API reference — the Jsii module that every
+# generated gem requires at run time.
+#
+# Simpler than the library documentation pipelines, because there is no jsii
+# assembly involved: the runtime is hand-written Ruby with YARD comments, so
+# there is nothing to generate and no naming profile to apply. It is just YARD
+# over runtime/lib, themed and published like the rest.
+#
+# Worth publishing because it is the half of the API a reader cannot infer from
+# the CDK docs: Jsii::Object, Jsii::Struct, Jsii::Enum and the kernel are what
+# generated classes are made of, and every generated page mentions them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: publish the built documentation to the site
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: runtime-docs
+  cancel-in-progress: false
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.publish && 'production' || '' }}
+    env:
+      BUCKET: aws-cdk-ruby-gems
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout the documentation site
+        uses: actions/checkout@v4
+        with:
+          repository: omarqureshi/rubygems.omarqureshi.net
+          ref: main
+          path: site
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Install YARD + redcarpet + rouge
+        run: gem install yard redcarpet rouge --no-document
+
+      - name: The version being documented
+        run: |
+          version=$(ruby -e "
+            spec = Gem::Specification.load('runtime/jsii-ruby-runtime.gemspec')
+            print spec.version.to_s
+          ")
+          [ -n "$version" ] || { echo "::error::could not read the runtime version"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "documenting jsii-ruby-runtime $version"
+
+      - name: Build the documentation
+        run: |
+          OUT="${RUNNER_TEMP}/docs"
+          mkdir -p "$OUT"
+          bash site/docs-gen/build-module-docs.sh runtime/lib "$OUT"
+          ruby site/docs-gen/inject-crumb.rb "$OUT"
+          # No gen-index/gen-module-landing here: both are assembly-driven, and
+          # a hand-written gem has no assembly. YARD's own index is the landing.
+          echo "DOCS_OUT=$OUT" >> "$GITHUB_ENV"
+
+      - name: The docs are rooted at Jsii
+        run: |
+          root=$(ruby -Isite/docs-gen -rroot_module -e 'print DocsRoot.detect(ARGV[0])' "$DOCS_OUT")
+          [ "$root" = "Jsii" ] || { echo "::error::expected a tree rooted at Jsii, got $root"; exit 1; }
+          echo "built $(find "$DOCS_OUT/Jsii" -name '*.html' | wc -l) pages under Jsii/"
+
+      - name: Upload the site
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jsii-runtime-docs
+          path: ${{ runner.temp }}/docs
+          if-no-files-found: warn
+
+      - name: Configure AWS credentials
+        if: inputs.publish
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsCDKRole
+          aws-region: us-east-1
+
+      - name: Publish to this version's own prefix
+        if: inputs.publish
+        run: |
+          DEST="s3://$BUCKET/docs/Jsii/${VERSION}/"
+          aws s3 sync "$DOCS_OUT" "$DEST" --no-progress
+          echo "published $(aws s3 ls "$DEST" --recursive | wc -l) objects to $DEST"
+
+      - name: Ask the site to refresh its aliases and caches
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::no SITE_DISPATCH_TOKEN; the site will refresh on its schedule"
+            exit 0
+          fi
+          gh api -X POST repos/omarqureshi/rubygems.omarqureshi.net/dispatches \
+            -f event_type=docs-published \
+            -f client_payload[library]=Jsii \
+            -f client_payload[version]="$VERSION" \
+            && echo "notified the site repository" \
+            || echo "::warning::dispatch failed; the site will refresh on its schedule"
