@@ -1,0 +1,109 @@
+name: publish-runtime
+
+# Publishes the jsii-ruby-runtime gem — the guest runtime this target's
+# generated code requires at run time.
+#
+# It lives here because it is this repository's artifact: the source is in
+# runtime/, and its version is kept in lockstep with this package's. It was
+# previously built and uploaded by aws-cdk-ruby as a side effect of publishing
+# the CDK gems, which had three problems. A runtime fix could only ship by
+# running a two-hour CDK build; a second distribution repository publishing
+# gems would upload it too, giving one artifact two publishers; and `gem build`
+# is not byte-reproducible, so re-uploading an existing version changes the
+# checksum the feed advertises and breaks `bundle install` for anyone holding
+# it in a lockfile.
+#
+# Generated packages depend on `jsii-ruby-runtime ~> 0.1`, a range — so they
+# resolve whatever compatible runtime is on the feed and never need one built
+# beside them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: upload the gem to the feed (otherwise this only builds it)
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: runtime-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.publish && 'production' || '' }}
+    env:
+      BUCKET: aws-cdk-ruby-gems
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Build the gem
+        run: |
+          cd runtime
+          gem build jsii-ruby-runtime.gemspec
+          gem_file=$(ls jsii-ruby-runtime-*.gem)
+          version=${gem_file#jsii-ruby-runtime-}; version=${version%.gem}
+          echo "GEM_FILE=$PWD/$gem_file" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "built $gem_file"
+
+      - name: The gem loads and answers for itself
+        # Cheap, but it catches a gemspec that ships the wrong files — which
+        # installs happily and fails on the consumer's first require.
+        run: |
+          gem install --local --no-document "$GEM_FILE"
+          ruby -e "require 'jsii'; puts 'jsii loads; Kernel present: ' + defined?(Jsii::Kernel).to_s"
+
+      - name: Configure AWS credentials
+        if: inputs.publish
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsCDKRole
+          aws-region: us-east-1
+
+      - name: Refuse to overwrite a published version
+        if: inputs.publish
+        run: |
+          # Add-only means never overwrite. `gem build` is not byte-reproducible,
+          # so re-uploading an existing version would change the checksum the
+          # feed advertises for it and break locked installs. Bump the version
+          # in runtime/jsii-ruby-runtime.gemspec instead.
+          key="gems/jsii-ruby-runtime-${VERSION}.gem"
+          if aws s3api head-object --bucket "$BUCKET" --key "$key" >/dev/null 2>&1; then
+            echo "::error::jsii-ruby-runtime ${VERSION} is already published; bump the version to publish a change"
+            exit 1
+          fi
+          echo "${VERSION} is not yet published"
+
+      - name: Publish
+        if: inputs.publish
+        run: |
+          aws s3 cp "$GEM_FILE" "s3://$BUCKET/gems/jsii-ruby-runtime-${VERSION}.gem" --no-progress >/dev/null
+          aws s3api head-object --bucket "$BUCKET" --key "gems/jsii-ruby-runtime-${VERSION}.gem" >/dev/null \
+            || { echo "::error::upload did not land"; exit 1; }
+          echo "published jsii-ruby-runtime ${VERSION}"
+
+      - name: Wait for the feed to advertise it
+        if: inputs.publish
+        run: |
+          # The site owns the index and rebuilds it on a timer; until then the
+          # gem is in the bucket but unadvertised, which is the safe order.
+          for _ in $(seq 1 75); do
+            if curl -fsS "https://rubygems.omarqureshi.net/info/jsii-ruby-runtime" 2>/dev/null \
+                 | grep -q "^${VERSION} "; then
+              echo "the feed advertises jsii-ruby-runtime ${VERSION}"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::the feed still does not advertise ${VERSION}"
+          exit 1
