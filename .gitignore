@@ -2,3 +2,7 @@
 /build/
 node_modules/
 *.tsbuildinfo
+
+# YARD writes its index beside the sources it reads. It is a build artifact,
+# and one that a docs run leaves in the working tree.
+.yardoc/
