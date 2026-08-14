@@ -121,7 +121,7 @@ export { rubyModuleName } from '../helpers';
  * Ruby module name for a jsii module FQN (e.g. `aws-cdk-lib.aws_s3`) when no assembly is
  * loaded: resolved against the target-config overlay (JSII_RUBY_TARGET_CONFIG) — the SAME
  * naming data generation uses — so snippet namespaces align with the compiled gems by
- * construction (`AWSCDK::S3` comes from config/cdk-targets.json, not from code). Without
+ * construction (`AWSCDK::S3` comes from the library's own profile, not from code). Without
  * an overlay entry the name derives generically, exactly as the generator would for an
  * unconfigured assembly. This removed the visitor's last piece of CDK-specific knowledge.
  */

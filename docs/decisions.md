@@ -18,9 +18,10 @@ acronym list; casing comes from `targets.ruby.acronyms` (or the overlay —
 see below), is scoped per-assembly (never pooled across dependencies), is
 matched as literal text with word-boundary awareness (`VpcEndpoint` →
 `VPCEndpoint`, but `AWSpecial` stays `AWSpecial`), and blank/non-string
-entries are discarded. aws-cdk-lib declares 53 acronyms
-(`config/cdk-targets.json`), including two deliberate calls documented
-there: `FSX` not AWS's `FSx` branding (the matcher is case-restoring over
+entries are discarded. aws-cdk-lib declares 53 acronyms in a profile it
+owns itself — `config/profile.json` in the `aws-cdk-ruby` distribution
+repository, not here — including two deliberate calls documented there:
+`FSX` not AWS's `FSx` branding (the matcher is case-restoring over
 PascalCase; mixed-case tokens are only used where declared), and version
 suffixes stay lowercase in gem names (`-v6`) with `V2`-style casing only
 where explicitly declared.
@@ -29,15 +30,18 @@ where explicitly declared.
 assembly's module (`AWSCDK::S3` under `AWSCDK`; a submodule declaring an
 unrelated root is a generation-time error, not a silent remap). Without
 config, names derive from the submodule name with the assembly's acronyms.
-For aws-cdk-lib, all 328 top-level submodules are explicit entries in the
-overlay — harvested from the original fork-era `.jsiirc` decisions — and
-`scripts/check-cdk-naming.js` fails the build when an aws-cdk-lib release
-adds a submodule with no recorded decision. Nested submodules derive from
-their parent.
+aws-cdk-lib names all 339 of its top-level submodules explicitly —
+harvested from the original fork-era `.jsiirc` decisions — and
+`aws-cdk-ruby` fails its own build when a release adds a submodule nobody
+has named. Nested submodules derive from their parent.
+
+That check lives beside the profile rather than here on purpose: which
+names a library publishes is that library's decision, and a language
+target holding the answer would be making it on every library's behalf.
 
 Enforced in: `src/helpers.ts` (`rubyModuleName`, `assemblyAcronyms`),
-`src/ruby.ts` (`rubyFullTypeName`), `test/ruby-names.test.ts`,
-`scripts/check-cdk-naming.js`.
+`src/ruby.ts` (`rubyFullTypeName`), `test/ruby-names.test.ts`. The
+aws-cdk-lib profile is enforced in `aws-cdk-ruby` (`test/profile.test.js`).
 
 ## Member names
 
