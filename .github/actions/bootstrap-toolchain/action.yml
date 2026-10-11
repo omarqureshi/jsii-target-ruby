@@ -124,9 +124,9 @@ runs:
           exit 1
         fi
         node -e "
-          const r = require.resolve('jsii-rosetta/lib/languages/index', { paths: ['${{ inputs.plugin-path }}'] });
+          const r = require.resolve('jsii-rosetta/lib/plugin-api', { paths: ['${{ inputs.plugin-path }}'] });
           if (typeof require(r).registerTargetLanguage !== 'function') {
-            console.error('::error::resolved jsii-rosetta has no language registry');
+            console.error('::error::resolved jsii-rosetta has no language-plugin API');
             process.exit(1);
           }
         "
