@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { translateTypeScript } from 'jsii-rosetta/lib/translate';
+import { translateTypeScript } from 'jsii-rosetta/lib/plugin-api';
 
 import { RubyVisitor } from '../src/rosetta/ruby-visitor';
 

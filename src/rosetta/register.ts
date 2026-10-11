@@ -8,29 +8,35 @@ import { RubyVisitor } from './ruby-visitor';
  * releases), registration is skipped and example translation is simply
  * unavailable — the pacmak target then emits examples as TypeScript verbatim.
  */
+/**
+ * The jsii-rosetta plugin API version this plugin is written against
+ * (`PLUGIN_API_VERSION` in jsii-rosetta/lib/plugin-api).
+ */
+export const ROSETTA_PLUGIN_API_VERSION = '0.1.0';
+
 export function registerRosettaLanguage(): void {
-  let registry: any;
+  let rosetta: any;
   try {
     /* eslint-disable-next-line @typescript-eslint/no-require-imports */
-    registry = require('jsii-rosetta/lib/languages/index');
+    rosetta = require('jsii-rosetta/lib/plugin-api');
   } catch {
-    return; // this jsii-rosetta does not expose its internals
-  }
-  if (typeof registry.registerTargetLanguage !== 'function') {
     // Loud, because the failure is otherwise invisible: generation succeeds
     // and every example silently comes back as its original TypeScript. The
     // usual cause is jsii-pacmak resolving a DIFFERENT jsii-rosetta copy
-    // (the published one, which has no registry) than the plugin registers
+    // (a published one, which has no plugin API) than the plugin registers
     // into — see scripts/link-toolchain.sh.
     console.error(
-      '[jsii-target-ruby] the resolved jsii-rosetta has no language registry; ' +
+      '[jsii-target-ruby] the resolved jsii-rosetta has no language-plugin API; ' +
         'example translation is DISABLED (examples will stay TypeScript). ' +
         'Ensure jsii-pacmak resolves a jsii-rosetta with external-language support.',
     );
     return;
   }
-  try {
-    registry.registerTargetLanguage('ruby', {
+  // Registering again with the same visitor version is a no-op in rosetta,
+  // so loading this module twice is harmless.
+  rosetta.registerTargetLanguage(
+    'ruby',
+    {
       // Bump whenever the visitor's output changes: rosetta keeps a cached
       // translation for as long as its recorded translator version matches, so
       // leaving this alone makes a rendering fix invisible in any rebuild that
@@ -44,15 +50,10 @@ export function registerRosettaLanguage(): void {
       // Rosetta translates in worker threads, which never run the generator,
       // so this is how a worker learns which assembly a snippet documents —
       // needed to resolve a reference the snippet does not typecheck well
-      // enough to resolve itself. Guarded: an older jsii-rosetta simply never
-      // calls it, and the generator still registers assemblies inline.
+      // enough to resolve itself.
       prepare: (context: { assemblyLocations?: readonly string[] }) =>
         registerAssemblyLocations(context?.assemblyLocations ?? []),
-    });
-  } catch (e: any) {
-    // Already registered (e.g. the module was loaded twice): fine.
-    if (!/already registered/.test(String(e?.message))) {
-      throw e;
-    }
-  }
+    },
+    { pluginApiVersion: ROSETTA_PLUGIN_API_VERSION },
+  );
 }

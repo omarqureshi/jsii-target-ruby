@@ -86,7 +86,7 @@ export function profileHarness(options: ProfileHarnessOptions): ProfileHarness {
       // Required lazily: importing rosetta at module load would make this
       // harness unusable in a process that only wants the naming questions.
       /* eslint-disable-next-line @typescript-eslint/no-require-imports */
-      const { translateTypeScript } = require('jsii-rosetta/lib/translate');
+      const { translateTypeScript } = require('jsii-rosetta/lib/plugin-api');
       return translateTypeScript({ contents: source, fileName: 'profile.ts' }, new RubyVisitor())
         .translation;
     },

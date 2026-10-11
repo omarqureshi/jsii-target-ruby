@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import * as path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 
-import { translateTypeScript } from 'jsii-rosetta/lib/translate';
+import { translateTypeScript } from 'jsii-rosetta/lib/plugin-api';
 
 import { RubyVisitor } from '../src/rosetta/ruby-visitor';
 import { registerAssemblyTypes, resetTypeOracle } from '../src/type-oracle';

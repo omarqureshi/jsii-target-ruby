@@ -4,28 +4,32 @@ import { rubyGemName } from '../gemspec';
 import { resolveRubyModulePath, rubyConstName, rubyModuleName, rubyName, toPascalCase } from '../helpers';
 import { loadRubyTargetOverlay, rubyModuleForImportAlias } from '../target-config';
 import { rubyPathForTypeName } from '../type-oracle';
-import { DefaultVisitor } from 'jsii-rosetta/lib/languages/default';
-import { TargetLanguage } from 'jsii-rosetta/lib/languages/target-language';
-import { analyzeObjectLiteral, ObjectLiteralStruct } from 'jsii-rosetta/lib/jsii/jsii-types';
 import {
+  analyzeObjectLiteral,
   analyzeStructType,
-  lookupJsiiSymbolFromNode,
-  isJsiiProtocolType,
-  JsiiSymbol,
-  simpleName,
-} from 'jsii-rosetta/lib/jsii/jsii-utils';
-import { jsiiTargetParameter } from 'jsii-rosetta/lib/jsii/packages';
-import { NO_SYNTAX, OTree } from 'jsii-rosetta/lib/o-tree';
-import { AstRenderer, CommentSyntax } from 'jsii-rosetta/lib/renderer';
-import { SubmoduleReference } from 'jsii-rosetta/lib/submodule-reference';
-import { stripCommentMarkers, voidExpressionString, matchAst, nodeOfType } from 'jsii-rosetta/lib/typescript/ast-utils';
-import { ImportStatement } from 'jsii-rosetta/lib/typescript/imports';
-import {
-  isEnumAccess,
-  isStaticReadonlyAccess,
-  parameterAcceptsUndefined,
+  AstRenderer,
+  CommentSyntax,
+  DefaultVisitor,
+  ImportStatement,
   inferredTypeOfExpression,
-} from 'jsii-rosetta/lib/typescript/types';
+  isEnumAccess,
+  isJsiiProtocolType,
+  isStaticReadonlyAccess,
+  JsiiSymbol,
+  jsiiTargetParameter,
+  lookupJsiiSymbolFromNode,
+  matchAst,
+  NO_SYNTAX,
+  nodeOfType,
+  ObjectLiteralStruct,
+  OTree,
+  parameterAcceptsUndefined,
+  simpleName,
+  stripCommentMarkers,
+  SubmoduleReference,
+  TargetLanguage,
+  voidExpressionString,
+} from 'jsii-rosetta/lib/plugin-api';
 
 /**
  * Whether a string literal is the final token on the line it will be rendered

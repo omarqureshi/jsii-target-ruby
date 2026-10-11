@@ -48,7 +48,7 @@ describe('assemblies handed over by rosetta', () => {
   function registeredFactory(): any {
     registerRosettaLanguage();
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const registry = require('jsii-rosetta/lib/languages/index');
+    const registry = require('jsii-rosetta/lib/plugin-api');
     return registry.visitorFactoryFor('ruby');
   }
 

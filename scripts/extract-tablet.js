@@ -9,9 +9,9 @@
 // every docs build. `extract` instead translates across a worker pool and can
 // reuse a cache, so unchanged snippets are never retranslated.
 //
-// The workers are fresh module contexts, so they are told to load this plugin:
-// otherwise Ruby is registered only in this process and the tablet comes back
-// with no Ruby translations in it at all.
+// The plugin is passed as a module for rosetta to load, rather than loaded
+// here: translation runs in worker threads, which are fresh module contexts,
+// and rosetta loads it in each of them as well as in this process.
 'use strict';
 
 const path = require('path');
@@ -23,19 +23,16 @@ async function main(argv) {
     process.exit(2);
   }
 
-  // Registers the Ruby visitor in THIS process (for snippet discovery); the
-  // workers get it via pluginModules below.
-  require('../lib/index.js');
-
   // Workers never run the generator, so the assembly being documented reaches
   // them through rosetta itself: `extractSnippets` hands the locations it was
   // given to every registered language before translating. Nothing to arrange
   // here beyond passing the directory, which it already receives.
-  const { extractSnippets } = require('jsii-rosetta/lib/commands/extract');
-  const pluginModule = require.resolve('../lib/index.js');
+  const { extractSnippets } = require('jsii-rosetta/lib/plugin-api');
 
   const result = await extractSnippets([assemblyDir], {
-    pluginModules: [pluginModule],
+    // Loaded both here and in every translation worker, which is where the
+    // Ruby language has to be registered.
+    pluginModules: [path.resolve(__dirname, '..', 'lib', 'index.js')],
     // Reuse anything already translated; rosetta drops entries whose source or
     // translator version changed, so a visitor bump invalidates exactly the
     // translations it affects rather than the whole tablet.
