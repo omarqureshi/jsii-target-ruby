@@ -1,4 +1,4 @@
-# 366 generated files
+# 370 generated files
 # Rewrite with: UPDATE_SNAPSHOT=1 node scripts/check-generated-code.js <dir>
 
 === jsii-calc.gemspec
@@ -1214,6 +1214,8 @@ module JsiiCalc
   Jsii::Object.register_autoload("jsii-calc.ClassWithCollections", 'jsii-calc/class_with_collections')
   JsiiCalc.autoload(:ClassWithContainerTypes, 'jsii-calc/class_with_container_types')
   Jsii::Object.register_autoload("jsii-calc.ClassWithContainerTypes", 'jsii-calc/class_with_container_types')
+  JsiiCalc.autoload(:ClassWithDateUnions, 'jsii-calc/class_with_date_unions')
+  Jsii::Object.register_autoload("jsii-calc.ClassWithDateUnions", 'jsii-calc/class_with_date_unions')
   JsiiCalc.autoload(:ClassWithDocs, 'jsii-calc/class_with_docs')
   Jsii::Object.register_autoload("jsii-calc.ClassWithDocs", 'jsii-calc/class_with_docs')
   JsiiCalc.autoload(:ClassWithJavaReservedWords, 'jsii-calc/class_with_java_reserved_words')
@@ -1536,12 +1538,16 @@ module JsiiCalc
   Jsii::Object.register_autoload("jsii-calc.StableEnum", 'jsii-calc/stable_enum')
   JsiiCalc.autoload(:StableStruct, 'jsii-calc/stable_struct')
   Jsii::Object.register_autoload("jsii-calc.StableStruct", 'jsii-calc/stable_struct')
+  JsiiCalc.autoload(:StaticAsyncMethods, 'jsii-calc/static_async_methods')
+  Jsii::Object.register_autoload("jsii-calc.StaticAsyncMethods", 'jsii-calc/static_async_methods')
   JsiiCalc.autoload(:StaticContext, 'jsii-calc/static_context')
   Jsii::Object.register_autoload("jsii-calc.StaticContext", 'jsii-calc/static_context')
   JsiiCalc.autoload(:StaticHelloParent, 'jsii-calc/static_hello_parent')
   Jsii::Object.register_autoload("jsii-calc.StaticHelloParent", 'jsii-calc/static_hello_parent')
   JsiiCalc.autoload(:StaticHelloChild, 'jsii-calc/static_hello_child')
   Jsii::Object.register_autoload("jsii-calc.StaticHelloChild", 'jsii-calc/static_hello_child')
+  JsiiCalc.autoload(:StaticPropertyAssignment, 'jsii-calc/static_property_assignment')
+  Jsii::Object.register_autoload("jsii-calc.StaticPropertyAssignment", 'jsii-calc/static_property_assignment')
   JsiiCalc.autoload(:Statics, 'jsii-calc/statics')
   Jsii::Object.register_autoload("jsii-calc.Statics", 'jsii-calc/statics')
   JsiiCalc.autoload(:StringEnum, 'jsii-calc/string_enum')
@@ -1784,6 +1790,8 @@ module JsiiCalc
   Jsii::Object.register_autoload("jsii-calc.union.IResolvable", 'jsii-calc/union/i_resolvable')
   JsiiCalc::Union.autoload(:Resolvable, 'jsii-calc/union/resolvable')
   Jsii::Object.register_autoload("jsii-calc.union.Resolvable", 'jsii-calc/union/resolvable')
+  JsiiCalc::Union.autoload(:UnionResolvableStruct, 'jsii-calc/union/union_resolvable_struct')
+  Jsii::Object.register_autoload("jsii-calc.union.UnionResolvableStruct", 'jsii-calc/union/union_resolvable_struct')
 end
 
 === lib/jsii-calc/_readme.rb
@@ -3592,6 +3600,63 @@ class JsiiCalc::ClassWithContainerTypes < Jsii::Object
 
 end
 
+=== lib/jsii-calc/class_with_date_unions.rb
+require 'jsii'
+
+# Unions that include `Date`, which requires the generated Go runtime type checks to import the "time" package.
+class JsiiCalc::ClassWithDateUnions < Jsii::Object
+  self.jsii_fqn = "jsii-calc.ClassWithDateUnions"
+  Jsii::Object.register_jsii_fqn("jsii-calc.ClassWithDateUnions", self)
+
+  # @param union_property [String, DateTime]
+  def initialize(union_property, &jsii_block)
+    Jsii::Type.check_type(union_property, "eyJ1bmlvbiI6eyJ0eXBlcyI6W3sicHJpbWl0aXZlIjoic3RyaW5nIn0seyJwcmltaXRpdmUiOiJkYXRlIn1dfX0=", "unionProperty")
+    Jsii::Object.instance_method(:initialize).bind(self).call(union_property, &jsii_block)
+  end
+
+  def self.jsii_overridable_methods
+    {
+      :union_property => { kind: :property, name: "unionProperty", is_optional: false },
+      :method_with_collections_of_date_unions_params => { kind: :method, name: "methodWithCollectionsOfDateUnionsParams", is_optional: false },
+      :method_with_date_union_param => { kind: :method, name: "methodWithDateUnionParam", is_optional: false },
+    }
+  end
+
+  # @param param [String, DateTime]
+  # @return [String]
+  def self.static_method_with_date_union_param(param)
+    Jsii::Type.check_type(param, "eyJ1bmlvbiI6eyJ0eXBlcyI6W3sicHJpbWl0aXZlIjoic3RyaW5nIn0seyJwcmltaXRpdmUiOiJkYXRlIn1dfX0=", "param")
+    Jsii::Kernel.instance.call_static("jsii-calc.ClassWithDateUnions", "staticMethodWithDateUnionParam", [param])
+  end
+
+  # @return [String, DateTime]
+  def union_property()
+    jsii_get_property("unionProperty")
+  end
+
+  def union_property=(value)
+    Jsii::Type.check_type(value, "eyJ1bmlvbiI6eyJ0eXBlcyI6W3sicHJpbWl0aXZlIjoic3RyaW5nIn0seyJwcmltaXRpdmUiOiJkYXRlIn1dfX0=", "unionProperty")
+    jsii_set_property("unionProperty", value)
+  end
+
+  # @param list [Array<String, DateTime>]
+  # @param map [Hash{String => String, DateTime}]
+  # @return [Numeric]
+  def method_with_collections_of_date_unions_params(list, map)
+    Jsii::Type.check_type(list, "eyJjb2xsZWN0aW9uIjp7ImVsZW1lbnR0eXBlIjp7InVuaW9uIjp7InR5cGVzIjpbeyJwcmltaXRpdmUiOiJzdHJpbmcifSx7InByaW1pdGl2ZSI6ImRhdGUifV19fSwia2luZCI6ImFycmF5In19", "list")
+    Jsii::Type.check_type(map, "eyJjb2xsZWN0aW9uIjp7ImVsZW1lbnR0eXBlIjp7InVuaW9uIjp7InR5cGVzIjpbeyJwcmltaXRpdmUiOiJzdHJpbmcifSx7InByaW1pdGl2ZSI6ImRhdGUifV19fSwia2luZCI6Im1hcCJ9fQ==", "map")
+    jsii_call_method("methodWithCollectionsOfDateUnionsParams", [list, map])
+  end
+
+  # @param param [String, DateTime]
+  # @return [String]
+  def method_with_date_union_param(param)
+    Jsii::Type.check_type(param, "eyJ1bmlvbiI6eyJ0eXBlcyI6W3sicHJpbWl0aXZlIjoic3RyaW5nIn0seyJwcmltaXRpdmUiOiJkYXRlIn1dfX0=", "param")
+    jsii_call_method("methodWithDateUnionParam", [param])
+  end
+
+end
+
 === lib/jsii-calc/class_with_docs.rb
 require 'jsii'
 
@@ -3915,6 +3980,16 @@ class JsiiCalc::ConfusingToJackson < Jsii::Object
   # @return [JsiiCalc::ConfusingToJacksonStruct]
   def self.make_struct_instance()
     Jsii::Kernel.instance.call_static("jsii-calc.ConfusingToJackson", "makeStructInstance", [])
+  end
+
+  # Returns the struct it receives, so the host can observe how the union-typed property crosses the boundary.
+  #
+  # @param input [JsiiCalc::ConfusingToJacksonStruct]
+  # @return [JsiiCalc::ConfusingToJacksonStruct]
+  def self.round_trip_struct(input)
+    input = input.is_a?(Hash) ? ::JsiiCalc::ConfusingToJacksonStruct.new(**input.transform_keys(&:to_sym)) : input
+    Jsii::Type.check_type(input, "eyJmcW4iOiJqc2lpLWNhbGMuQ29uZnVzaW5nVG9KYWNrc29uU3RydWN0In0=", "input")
+    Jsii::Kernel.instance.call_static("jsii-calc.ConfusingToJackson", "roundTripStruct", [input])
   end
 
   # @return [Scope::JsiiCalcLib::IFriendly, Array<Scope::JsiiCalcLib::IFriendly, JsiiCalc::AbstractClass>, nil]
@@ -12097,6 +12172,32 @@ class JsiiCalc::StableStruct < Jsii::Struct
   end
 end
 
+=== lib/jsii-calc/static_async_methods.rb
+require 'jsii'
+
+# Static asynchronous methods, used to verify that their arguments and results cross the language boundary.
+class JsiiCalc::StaticAsyncMethods < Jsii::Object
+  self.jsii_fqn = "jsii-calc.StaticAsyncMethods"
+  Jsii::Object.register_jsii_fqn("jsii-calc.StaticAsyncMethods", self)
+
+  def initialize(*args)
+    raise NoMethodError, "jsii-calc.StaticAsyncMethods does not have a visible constructor; use the provided factory methods"
+  end
+
+  def self.jsii_overridable_methods
+    {
+    }
+  end
+
+  # @param value [Numeric]
+  # @return [Numeric]
+  def self.add_one(value)
+    Jsii::Type.check_type(value, "eyJwcmltaXRpdmUiOiJudW1iZXIifQ==", "value")
+    Jsii::Kernel.instance.call_static("jsii-calc.StaticAsyncMethods", "addOne", [value])
+  end
+
+end
+
 === lib/jsii-calc/static_context.rb
 require 'jsii'
 
@@ -12200,6 +12301,42 @@ class JsiiCalc::StaticHelloParent < Jsii::Object
   # @return [Numeric]
   def self.PROPERTY()
     Jsii::Kernel.instance.get_static("jsii-calc.StaticHelloParent", "PROPERTY")
+  end
+
+end
+
+=== lib/jsii-calc/static_property_assignment.rb
+require 'jsii'
+
+# Validates that assigning a static property from a jsii host language updates the value on the JavaScript side.
+class JsiiCalc::StaticPropertyAssignment < Jsii::Object
+  self.jsii_fqn = "jsii-calc.StaticPropertyAssignment"
+  Jsii::Object.register_jsii_fqn("jsii-calc.StaticPropertyAssignment", self)
+
+  def initialize(*args)
+    raise NoMethodError, "jsii-calc.StaticPropertyAssignment does not have a visible constructor; use the provided factory methods"
+  end
+
+  def self.jsii_overridable_methods
+    {
+    }
+  end
+
+  # Reads `value` from within JavaScript, so that host language assignments are observable.
+  #
+  # @return [String]
+  def self.read_value()
+    Jsii::Kernel.instance.call_static("jsii-calc.StaticPropertyAssignment", "readValue", [])
+  end
+
+  # @return [String]
+  def self.value()
+    Jsii::Kernel.instance.get_static("jsii-calc.StaticPropertyAssignment", "value")
+  end
+
+  def self.value=(value)
+    Jsii::Type.check_type(value, "eyJwcmltaXRpdmUiOiJzdHJpbmcifQ==", "value")
+    Jsii::Kernel.instance.set_static("jsii-calc.StaticPropertyAssignment", "value", value)
   end
 
 end
@@ -13909,6 +14046,7 @@ class JsiiCalc::Union::ConsumesUnion < Jsii::Object
 
   def self.jsii_overridable_methods
     {
+      :union_property => { kind: :property, name: "unionProperty", is_optional: true },
     }
   end
 
@@ -13917,6 +14055,17 @@ class JsiiCalc::Union::ConsumesUnion < Jsii::Object
   def self.union_type(param)
     Jsii::Type.check_type(param, "eyJ1bmlvbiI6eyJ0eXBlcyI6W3siZnFuIjoiQHNjb3BlL2pzaWktY2FsYy1saWIuSUZyaWVuZGx5In0seyJmcW4iOiJqc2lpLWNhbGMudW5pb24uSVJlc29sdmFibGUifSx7ImZxbiI6ImpzaWktY2FsYy51bmlvbi5SZXNvbHZhYmxlIn1dfX0=", "param")
     Jsii::Kernel.instance.call_static("jsii-calc.union.ConsumesUnion", "unionType", [param])
+  end
+
+  # @return [JsiiCalc::Union::IResolvable, JsiiCalc::Union::UnionResolvableStruct, nil]
+  def union_property()
+    jsii_get_property("unionProperty")
+  end
+
+  def union_property=(value)
+    value = value.is_a?(Hash) ? ::JsiiCalc::Union::UnionResolvableStruct.new(**value.transform_keys(&:to_sym)) : value
+    Jsii::Type.check_type(value, "eyJ1bmlvbiI6eyJ0eXBlcyI6W3siZnFuIjoianNpaS1jYWxjLnVuaW9uLklSZXNvbHZhYmxlIn0seyJmcW4iOiJqc2lpLWNhbGMudW5pb24uVW5pb25SZXNvbHZhYmxlU3RydWN0In1dfX0=", "unionProperty") unless value.nil?
+    jsii_set_property("unionProperty", value)
   end
 
 end
@@ -13962,6 +14111,36 @@ class JsiiCalc::Union::Resolvable < Jsii::Object
     jsii_call_method("resolve", [])
   end
 
+end
+
+=== lib/jsii-calc/union/union_resolvable_struct.rb
+require 'jsii'
+
+class JsiiCalc::Union::UnionResolvableStruct < Jsii::Struct
+  Jsii::Object.register_jsii_fqn("jsii-calc.union.UnionResolvableStruct", self)
+
+  # @param value [String]
+  def initialize(value:)
+    @value = value
+    Jsii::Type.check_type(@value, "eyJwcmltaXRpdmUiOiJzdHJpbmcifQ==", "value")
+  end
+
+  # @return [String]
+  attr_reader :value
+
+  def self.jsii_properties
+    {
+      :value => "value",
+    }
+  end
+
+  def to_jsii
+    result = {}
+    result.merge!({
+      "value" => @value,
+    })
+    result.compact
+  end
 end
 
 === lib/jsii-calc/upcasing_reflectable.rb
@@ -14942,6 +15121,15 @@ class JsiiCalc::ClassWithContainerTypes < ::Jsii::Object
   attr_reader props: ::JsiiCalc::ContainerProps?
 end
 
+class JsiiCalc::ClassWithDateUnions < ::Jsii::Object
+  def initialize: ((String | DateTime) union_property) -> void
+  attr_reader union_property: (String | DateTime)
+  attr_writer union_property: (String | DateTime)
+  def self.static_method_with_date_union_param: ((String | DateTime) param) -> String
+  def method_with_collections_of_date_unions_params: (Array[(String | DateTime)] list, Hash[String, (String | DateTime)] map) -> Numeric
+  def method_with_date_union_param: ((String | DateTime) param) -> String
+end
+
 class JsiiCalc::ClassWithDocs < ::Jsii::Object
   def initialize: () -> void
 end
@@ -14983,6 +15171,7 @@ class JsiiCalc::ConfusingToJackson < ::Jsii::Object
   attr_writer union_property: (::Scope::JsiiCalcLib::IFriendly | Array[(::Scope::JsiiCalcLib::IFriendly | ::JsiiCalc::AbstractClass)])?
   def self.make_instance: () -> ::JsiiCalc::ConfusingToJackson
   def self.make_struct_instance: () -> ::JsiiCalc::ConfusingToJacksonStruct
+  def self.round_trip_struct: ((::JsiiCalc::ConfusingToJacksonStruct | Hash[Symbol, untyped]) input) -> ::JsiiCalc::ConfusingToJacksonStruct
 end
 
 class JsiiCalc::ConfusingToJacksonStruct < ::Jsii::Struct
@@ -16063,6 +16252,10 @@ class JsiiCalc::StableStruct < ::Jsii::Struct
   attr_reader readonly_property: String
 end
 
+class JsiiCalc::StaticAsyncMethods < ::Jsii::Object
+  def self.add_one: (Numeric value) -> Numeric
+end
+
 class JsiiCalc::StaticContext < ::Jsii::Object
   def self.static_variable: () -> bool
   def self.static_variable=: (bool) -> bool
@@ -16082,6 +16275,12 @@ class JsiiCalc::StaticHelloChild < ::JsiiCalc::StaticHelloParent
   def self.PROPERTY: () -> Numeric
   PROPERTY: Numeric
   def self.method: () -> void
+end
+
+class JsiiCalc::StaticPropertyAssignment < ::Jsii::Object
+  def self.value: () -> String
+  def self.value=: (String) -> String
+  def self.read_value: () -> String
 end
 
 class JsiiCalc::Statics < ::Jsii::Object
@@ -16830,6 +17029,8 @@ class JsiiCalc::Submodule::Returnsparam::ReturnsSpecialParameter < ::Jsii::Objec
 end
 
 class JsiiCalc::Union::ConsumesUnion < ::Jsii::Object
+  attr_reader union_property: (::JsiiCalc::Union::IResolvable | ::JsiiCalc::Union::UnionResolvableStruct)?
+  attr_writer union_property: (::JsiiCalc::Union::IResolvable | (::JsiiCalc::Union::UnionResolvableStruct | Hash[Symbol, untyped]))?
   def self.union_type: ((::Scope::JsiiCalcLib::IFriendly | ::JsiiCalc::Union::IResolvable | ::JsiiCalc::Union::Resolvable) param) -> void
 end
 
@@ -16840,4 +17041,9 @@ end
 class JsiiCalc::Union::Resolvable < ::Jsii::Object
   include ::JsiiCalc::Union::IResolvable
   def resolve: () -> untyped
+end
+
+class JsiiCalc::Union::UnionResolvableStruct < ::Jsii::Struct
+  def initialize: (value: String) -> void
+  attr_reader value: String
 end
