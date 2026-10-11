@@ -4,10 +4,14 @@ import * as reflect from 'jsii-reflect';
 import { ApiLocation, enforcesStrictMode, TargetLanguage } from 'jsii-rosetta';
 import * as path from 'path';
 
-import { Generator, Legalese } from 'jsii-pacmak/lib/generator';
-import { Target, TargetOptions } from 'jsii-pacmak/lib/target';
-import { assertSpecIsRosettaCompatible } from 'jsii-pacmak/lib/rosetta-assembly';
-import { subprocess } from 'jsii-pacmak/lib/util';
+import {
+  assertSpecIsRosettaCompatible,
+  Generator,
+  Legalese,
+  subprocess,
+  Target,
+  TargetOptions,
+} from 'jsii-pacmak/lib/plugin-api';
 import { generateGemspec, rubyGemName } from './gemspec';
 import * as helpers from './helpers';
 import { rubySq, rubyJsonLiteral } from './helpers';

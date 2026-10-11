@@ -30,14 +30,15 @@ node ../node_modules/typescript/bin/tsc --build ..
 # (@scope/jsii-calc-{lib,base,base-of-base}), so we only need to pass the
 # top-level assembly here.
 #
-# `--force-target`: the upstream fixtures carry no `jsii.targets.ruby` config
-# (external-language config never lands in an AWS repo), so pacmak would skip
-# them.  The generator's defaults derive the same gem/module names an explicit
-# config would state (jsii-calc/JsiiCalc, scope-jsii-calc-lib/
-# Scope::JsiiCalcLib, ...).  The planned pacmak `--target-config` overlay is
-# the general answer for names the defaults cannot derive.
+# The upstream fixtures carry no `jsii.targets.ruby` config (external-language
+# config never lands in an AWS repo).  pacmak generates a plugin target for
+# every package regardless, and the generator's defaults derive the same
+# gem/module names an explicit config would state (jsii-calc/JsiiCalc,
+# scope-jsii-calc-lib/Scope::JsiiCalcLib, ...).  The planned pacmak
+# `--target-config` overlay is the general answer for names the defaults
+# cannot derive.
 node ../node_modules/jsii-pacmak/bin/jsii-pacmak \
   --plugin .. \
-  -t ruby --code-only --recurse --force-target \
+  -t ruby --code-only --recurse \
   -o "${genRoot}" \
   ../node_modules/jsii-calc
